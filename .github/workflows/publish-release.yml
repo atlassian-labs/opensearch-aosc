@@ -1,4 +1,4 @@
-name: Release
+name: Publish Release
 
 on:
   workflow_dispatch:
@@ -25,12 +25,10 @@ on:
         type: boolean
 
 permissions:
-  contents: write
-  attestations: write
-  id-token: write
+  contents: read
 
 concurrency:
-  group: release-${{ github.ref_name }}-${{ inputs.os_line }}
+  group: publish-release-${{ github.ref_name }}-${{ inputs.os_line }}
   cancel-in-progress: false
 
 jobs:
@@ -45,6 +43,7 @@ jobs:
       build_versions: ${{ steps.matrix.outputs.build_versions }}
       test_versions: ${{ steps.matrix.outputs.test_versions }}
       release_tag: ${{ steps.matrix.outputs.release_tag }}
+      docs_version: ${{ steps.matrix.outputs.docs_version }}
       build_versions_json: ${{ steps.matrix.outputs.build_versions_json }}
       test_versions_json: ${{ steps.matrix.outputs.test_versions_json }}
     steps:
@@ -54,7 +53,7 @@ jobs:
       - name: Check release branch
         run: |
           if [[ "${GITHUB_REF_NAME}" != "${{ steps.matrix.outputs.release_branch }}" ]]; then
-            echo "Release line ${{ steps.matrix.outputs.os_line }} must be released from ${{ steps.matrix.outputs.release_branch }}; current ref is ${GITHUB_REF_NAME}" >&2
+            echo "Release line ${{ steps.matrix.outputs.os_line }} must be published from ${{ steps.matrix.outputs.release_branch }}; current ref is ${GITHUB_REF_NAME}" >&2
             exit 1
           fi
       - name: Check release tag is unused
@@ -74,7 +73,7 @@ jobs:
   validation:
     name: Release validation
     needs: metadata
-    uses: ./.github/workflows/validation.yml
+    uses: ./.github/workflows/components.yml
     with:
       os_line: ${{ needs.metadata.outputs.os_line }}
       include_docs: true
@@ -112,6 +111,8 @@ jobs:
             echo
             echo "Test versions: ${{ needs.metadata.outputs.test_versions }}"
             echo
+            echo "Documentation: https://atlassian-labs.github.io/opensearch-aosc/${{ needs.metadata.outputs.docs_version }}/"
+            echo
             echo "Release branch: ${GITHUB_REF_NAME}"
             echo
             echo "Source commit: ${GITHUB_SHA}"
@@ -137,6 +138,10 @@ jobs:
     if: ${{ always() && inputs.mode == 'draft-release' && needs.metadata.result == 'success' && needs.build.result == 'success' }}
     runs-on: ubuntu-latest
     environment: release
+    permissions:
+      contents: write
+      attestations: write
+      id-token: write
     steps:
       - uses: actions/checkout@v6
       - uses: actions/download-artifact@v8
@@ -157,14 +162,19 @@ jobs:
           fi
           gh release create "${{ needs.metadata.outputs.release_tag }}" build/release/*.zip build/release/SHA256SUMS "${FLAGS[@]}"
 
-  deploy-docs:
-    name: Deploy versioned docs
+  deploy_docs:
+    name: Deploy release docs
     needs:
       - metadata
       - build
       - draft-release
     if: ${{ always() && inputs.mode == 'draft-release' && needs.metadata.result == 'success' && needs.build.result == 'success' && needs.draft-release.result == 'success' }}
     runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    concurrency:
+      group: docs-deploy
+      cancel-in-progress: false
     steps:
       - uses: actions/checkout@v6
         with:
@@ -174,19 +184,5 @@ jobs:
           python-version: "3.12"
       - name: Install docs dependencies
         run: python -m pip install 'mkdocs<2' mkdocs-material pymdown-extensions mkdocs-drawio mike
-      - name: Deploy docs with mike
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git fetch origin \
-            '+refs/heads/develop:refs/remotes/origin/develop' \
-            '+refs/heads/${{ needs.metadata.outputs.release_branch }}:refs/remotes/origin/${{ needs.metadata.outputs.release_branch }}'
-
-          git checkout --detach origin/develop
-          mike deploy --push --update-aliases develop latest
-
-          git checkout --detach "${GITHUB_SHA}"
-          docs_version="${{ needs.metadata.outputs.release_branch }}"
-          docs_version="${docs_version#releases/}"
-          mike deploy --push "${docs_version}"
-          mike set-default --push latest
+      - name: Deploy release docs with mike
+        run: scripts/deploy-docs-version.sh --version "${{ needs.metadata.outputs.docs_version }}"

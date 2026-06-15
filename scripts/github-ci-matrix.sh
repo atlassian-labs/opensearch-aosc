@@ -76,6 +76,7 @@ emit_output_lines() {
     echo "build_versions=${BUILD_VERSIONS}"
     echo "test_versions=${TEST_VERSIONS}"
     echo "release_tag=${RELEASE_TAG}"
+    echo "docs_version=${DOCS_VERSION}"
     echo "build_versions_json=$(csv_to_json "${BUILD_VERSIONS}")"
     echo "test_versions_json=$(csv_to_json "${TEST_VERSIONS}")"
     echo "validation_matrix_json=$(validation_matrix_json)"

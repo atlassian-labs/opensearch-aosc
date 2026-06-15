@@ -10,7 +10,7 @@ The build currently declares support for:
 - OpenSearch `2.17.0`
 - OpenSearch `2.19.0`
 
-Patch releases within the same minor may be compatible because the plugin descriptor is rewritten to a `~X.Y.Z` semver range. Test the exact OpenSearch version before using it.
+Patch releases within the same minor may be compatible because the plugin descriptor is rewritten to a `~X.Y.Z` semver range. Test the exact OpenSearch version before using it. See [Compatibility](../reference/compatibility.md) for the current build and test matrix.
 
 ## Build from Source
 
@@ -27,6 +27,22 @@ aosc-plugin/build/distributions/opensearch-aosc-<version>.zip
 ```
 
 Repeat the build command with a different `-Dopensearch.version=...` when you need a ZIP for another supported OpenSearch minor.
+
+## Install from GitHub Release
+
+Published releases attach one ZIP per supported OpenSearch minor:
+
+```text
+opensearch-aosc-<aosc-version>-opensearch-<opensearch-minor>.zip
+```
+
+For example, an AOSC `0.1.0` release for OpenSearch `2.19.x` uses:
+
+```text
+opensearch-aosc-0.1.0-opensearch-2.19.zip
+```
+
+Download the ZIP matching your OpenSearch minor, verify it against `SHA256SUMS`, then install that ZIP on each node.
 
 ## Install on Each Node
 

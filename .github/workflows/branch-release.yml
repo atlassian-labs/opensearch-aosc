@@ -1,0 +1,35 @@
+name: "Branch: release"
+
+on:
+  push:
+    branches:
+      - 'releases/**'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: branch-release-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  validation:
+    name: Run full CI
+    uses: ./.github/workflows/components.yml
+    with:
+      os_line: os2
+      include_docs: true
+      artifact_retention_days: 7
+
+  full_ci:
+    name: Full CI
+    needs: validation
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check full CI result
+        run: |
+          if [[ "${{ needs.validation.result }}" != "success" ]]; then
+            echo "Full CI failed: ${{ needs.validation.result }}" >&2
+            exit 1
+          fi

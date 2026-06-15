@@ -1,39 +1,29 @@
-name: CI
+name: Pull Request
 
 on:
   pull_request:
+    branches:
+      - develop
+      - 'releases/**'
     types:
       - opened
       - synchronize
       - reopened
       - ready_for_review
-  push:
-    branches:
-      - develop
-      - releases/**
-  workflow_dispatch:
-    inputs:
-      os_line:
-        description: OpenSearch compatibility line
-        required: false
-        default: os2
-        type: choice
-        options:
-          - os2
 
 permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.workflow }}-${{ github.event_name }}-${{ github.event.pull_request.number || github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  group: pull-request-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
 
 jobs:
   validation:
     name: Run full CI
-    uses: ./.github/workflows/validation.yml
+    uses: ./.github/workflows/components.yml
     with:
-      os_line: ${{ inputs.os_line || 'os2' }}
+      os_line: os2
       include_docs: true
       artifact_retention_days: 7
 

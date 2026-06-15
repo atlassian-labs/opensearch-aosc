@@ -32,7 +32,7 @@ build_versions=2.15.0,2.17.0,2.19.0
 test_versions=2.15.0,2.17.0,2.17.1,2.19.0,2.19.3
 ```
 
-Release tags, asset names, GitHub Actions matrices, and release branch checks are derived from these files. Do not type release versions directly into the GitHub workflow.
+Release tags, asset names, documentation versions, GitHub Actions matrices, and release branch checks are derived from these files. Do not type release versions directly into the GitHub workflow.
 
 ## Branches
 
@@ -44,9 +44,11 @@ Release branches are organized by OpenSearch major line:
 | `releases/2.x` | OpenSearch 2.x maintenance and releases. |
 | `releases/3.x` | OpenSearch 3.x maintenance and releases once supported. |
 
-GitHub release workflows must run from the branch declared in the matching `release/<line>.properties` file. For example, the OpenSearch 2.x release workflow should only publish from `releases/2.x`.
+GitHub release publishing must run from the branch declared in the matching `release/<line>.properties` file. For example, the OpenSearch 2.x release publisher should only publish plugin artifacts from `releases/2.x`.
 
-Pushing to a release branch runs CI only. Publishing is manual: run the GitHub `Release` workflow from the release branch after CI is green.
+Pushing to a release branch runs validation only. Publishing is manual: run the GitHub `Publish Release` workflow from the release branch after validation is green.
+
+Do not publish plugin releases directly from `develop`. Merge or cherry-pick the intended release content into the matching `releases/*` branch first, then release from that branch. This keeps release artifacts tied to a maintenance line instead of a moving development branch.
 
 Release tags should include the OpenSearch major line, for example:
 
@@ -57,9 +59,32 @@ aosc-0.1.0-os3
 
 Avoid ambiguous tags such as `v0.1.0` once OpenSearch 2.x and 3.x can diverge.
 
-The release workflow fails before building if the computed release tag or GitHub release already exists. Bump `aosc.version` before publishing another release for the same OpenSearch line.
+The publish workflow fails before building if the computed release tag or GitHub release already exists. Bump `aosc.version` before publishing another release for the same OpenSearch line.
 
-## GitHub CI Policy
+## OpenSearch Compatibility
+
+Each release line declares two compatibility lists:
+
+| Property | Meaning |
+| --- | --- |
+| `build_versions` | OpenSearch minors that receive release ZIPs. |
+| `test_versions` | Exact OpenSearch patch versions covered by CI. |
+
+For OpenSearch 2.x, AOSC currently builds release ZIPs for `2.15`, `2.17`, and `2.19`, and runs CI against `2.15.0`, `2.17.0`, `2.17.1`, `2.19.0`, and `2.19.3`.
+
+The ZIP name intentionally uses the OpenSearch minor, for example `opensearch-aosc-0.1.0-opensearch-2.19.zip`. The plugin descriptor uses a patch-compatible semver range for that minor, so the `2.19` ZIP is intended for the `2.19.x` line unless the release notes call out an exception.
+
+## GitHub Actions Policy
+
+The workflow files are split by the reason a workflow runs:
+
+| Workflow | File | Trigger | Publishes? |
+| --- | --- | --- | --- |
+| Pull Request | `.github/workflows/pull-request.yml` | Pull requests targeting `develop` or `releases/**` | No |
+| Branch: develop | `.github/workflows/branch-develop.yml` | Pushes to `develop` | Publishes `/develop/` docs after validation passes |
+| Branch: release | `.github/workflows/branch-release.yml` | Pushes to `releases/**` | No |
+| Publish Release | `.github/workflows/publish-release.yml` | Manual dispatch from a release branch | Publishes GitHub release assets and release docs |
+| Components | `.github/workflows/components.yml` | Reusable workflow only | No |
 
 Pull requests run full CI automatically. Full CI builds the docs and validates every OpenSearch version in `test_versions` from `release/<line>.properties`.
 
@@ -77,7 +102,7 @@ Pushes to `develop` and `releases/**` also run full CI. Branch protection should
 
 - `Full CI`
 
-The `Release` workflow runs the same full validation before it builds release ZIPs or creates a draft GitHub release.
+The `Publish Release` workflow runs the same full validation before it builds release ZIPs or creates a draft GitHub release.
 
 ## GitHub Release Assets
 
@@ -122,17 +147,21 @@ Inspect the release metadata with:
 
 ## Documentation Site
 
-GitHub Pages uses MkDocs Material with `mike` versioning. Pull requests and branch pushes build the docs as CI validation only; they do not publish the site.
+GitHub Pages uses MkDocs Material with `mike` versioning. Pull requests build the docs as CI validation only; they do not publish the site.
 
-The `Release` workflow publishes docs to the `gh-pages` branch after release validation, asset build, and draft release creation succeed. The GitHub Pages repository setting should serve from the `gh-pages` branch at `/`.
+The `Publish Release` workflow publishes release docs to the `gh-pages` branch after release validation, asset build, and draft release creation succeed. The GitHub Pages repository setting should serve from the `gh-pages` branch at `/`.
+
+Pushes to `develop` publish the current development docs to `/develop/` after full CI passes.
 
 The current docs layout is:
 
 | Source | Published path |
 | --- | --- |
-| `develop` | `/develop/` with `/latest/` alias |
-| `releases/2.x` | `/2.x/` |
-| `releases/3.x` | `/3.x/` once the branch exists. |
+| `develop` | `/develop/` |
+| `releases/2.x` with `aosc.version=0.1.0` | `/0.1-os2/` |
+| `releases/3.x` with `aosc.version=0.1.0` | `/0.1-os3/` once the branch exists |
+
+Release documentation is versioned by AOSC minor line plus OpenSearch major line. For example, `aosc.version=0.1.0` and `line=os2` publish to `/0.1-os2/`. A patch release such as `0.1.1` updates the same `/0.1-os2/` documentation version instead of creating a new docs version for every patch.
 
 Build the docs locally with:
 
@@ -144,7 +173,7 @@ mkdocs build --strict
 
 ## CI Artifacts
 
-CI uploads Gradle reports and test results only when a validation job fails. Normal CI artifacts expire after 7 days; release workflow test artifacts expire after 14 days. Release ZIPs are not CI artifacts; they are attached to GitHub Releases.
+CI uploads Gradle reports and test results only when a validation job fails. Normal CI artifacts expire after 7 days; publish workflow test artifacts expire after 14 days. Release ZIPs are not CI artifacts; they are attached to GitHub Releases.
 
 ## First Public Import
 

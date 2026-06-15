@@ -137,6 +137,7 @@ nav:
   - Reference:
       - reference/index.md
       - REST API: reference/rest-api.md
+      - Compatibility: reference/compatibility.md
       - Configuration: reference/configuration.md
       - State Machine: reference/state-machine.md
       - Error Reference: reference/error-codes.md

@@ -1,0 +1,192 @@
+name: Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      os_line:
+        description: OpenSearch compatibility line
+        required: true
+        default: os2
+        type: choice
+        options:
+          - os2
+      mode:
+        description: Release mode
+        required: true
+        default: dry-run
+        type: choice
+        options:
+          - dry-run
+          - draft-release
+      prerelease:
+        description: Mark draft release as prerelease
+        required: true
+        default: true
+        type: boolean
+
+permissions:
+  contents: write
+  attestations: write
+  id-token: write
+
+concurrency:
+  group: release-${{ github.ref_name }}-${{ inputs.os_line }}
+  cancel-in-progress: false
+
+jobs:
+  metadata:
+    name: Metadata
+    runs-on: ubuntu-latest
+    outputs:
+      aosc_version: ${{ steps.matrix.outputs.aosc_version }}
+      os_line: ${{ steps.matrix.outputs.os_line }}
+      release_branch: ${{ steps.matrix.outputs.release_branch }}
+      primary_version: ${{ steps.matrix.outputs.primary_version }}
+      build_versions: ${{ steps.matrix.outputs.build_versions }}
+      test_versions: ${{ steps.matrix.outputs.test_versions }}
+      release_tag: ${{ steps.matrix.outputs.release_tag }}
+      build_versions_json: ${{ steps.matrix.outputs.build_versions_json }}
+      test_versions_json: ${{ steps.matrix.outputs.test_versions_json }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: matrix
+        run: ./scripts/github-ci-matrix.sh "${{ inputs.os_line }}" --github-output
+      - name: Check release branch
+        run: |
+          if [[ "${GITHUB_REF_NAME}" != "${{ steps.matrix.outputs.release_branch }}" ]]; then
+            echo "Release line ${{ steps.matrix.outputs.os_line }} must be released from ${{ steps.matrix.outputs.release_branch }}; current ref is ${GITHUB_REF_NAME}" >&2
+            exit 1
+          fi
+      - name: Check release tag is unused
+        env:
+          GH_TOKEN: ${{ github.token }}
+          RELEASE_TAG: ${{ steps.matrix.outputs.release_tag }}
+        run: |
+          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "GitHub release ${RELEASE_TAG} already exists. Bump aosc.version in version.properties before releasing again." >&2
+            exit 1
+          fi
+          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
+            echo "Git tag ${RELEASE_TAG} already exists. Bump aosc.version in version.properties before releasing again." >&2
+            exit 1
+          fi
+
+  validation:
+    name: Release validation
+    needs: metadata
+    uses: ./.github/workflows/validation.yml
+    with:
+      os_line: ${{ needs.metadata.outputs.os_line }}
+      include_docs: true
+      artifact_retention_days: 14
+
+  build:
+    name: Build release ZIPs
+    needs:
+      - metadata
+      - validation
+    if: ${{ always() && needs.metadata.result == 'success' && needs.validation.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: gradle
+      - name: Pre-fetch Gradle
+        run: ./scripts/ensure-gradle.sh
+      - name: Build release ZIPs
+        run: ./scripts/build-release-zips.sh "${{ needs.metadata.outputs.os_line }}"
+      - name: Generate release notes stub
+        run: |
+          {
+            echo "# ${{ needs.metadata.outputs.release_tag }}"
+            echo
+            echo "## Compatibility"
+            echo
+            echo "This release contains AOSC ${{ needs.metadata.outputs.aosc_version }} builds for ${{ needs.metadata.outputs.os_line }}."
+            echo
+            echo "Build versions: ${{ needs.metadata.outputs.build_versions }}"
+            echo
+            echo "Test versions: ${{ needs.metadata.outputs.test_versions }}"
+            echo
+            echo "Release branch: ${GITHUB_REF_NAME}"
+            echo
+            echo "Source commit: ${GITHUB_SHA}"
+            echo
+            echo "See \`SHA256SUMS\` for asset checksums."
+          } > build/release/RELEASE_NOTES.md
+      - uses: actions/upload-artifact@v7
+        with:
+          name: release-assets-${{ needs.metadata.outputs.release_tag }}-${{ github.run_attempt }}
+          path: |
+            build/release/*.zip
+            build/release/SHA256SUMS
+            build/release/RELEASE_NOTES.md
+            build/release/release.env
+          if-no-files-found: error
+          retention-days: 14
+
+  draft-release:
+    name: Create draft GitHub release
+    needs:
+      - metadata
+      - build
+    if: ${{ always() && inputs.mode == 'draft-release' && needs.metadata.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: release
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/download-artifact@v8
+        with:
+          name: release-assets-${{ needs.metadata.outputs.release_tag }}-${{ github.run_attempt }}
+          path: build/release
+      - name: Attest release ZIPs
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: build/release/*.zip
+      - name: Create draft GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          FLAGS=(--draft --target "${GITHUB_SHA}" --title "${{ needs.metadata.outputs.release_tag }}" --notes-file build/release/RELEASE_NOTES.md)
+          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
+            FLAGS+=(--prerelease)
+          fi
+          gh release create "${{ needs.metadata.outputs.release_tag }}" build/release/*.zip build/release/SHA256SUMS "${FLAGS[@]}"
+
+  deploy-docs:
+    name: Deploy versioned docs
+    needs:
+      - metadata
+      - build
+      - draft-release
+    if: ${{ always() && inputs.mode == 'draft-release' && needs.metadata.result == 'success' && needs.build.result == 'success' && needs.draft-release.result == 'success' }}
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install docs dependencies
+        run: python -m pip install 'mkdocs<2' mkdocs-material pymdown-extensions mkdocs-drawio mike
+      - name: Deploy docs with mike
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git fetch origin \
+            '+refs/heads/develop:refs/remotes/origin/develop' \
+            '+refs/heads/${{ needs.metadata.outputs.release_branch }}:refs/remotes/origin/${{ needs.metadata.outputs.release_branch }}'
+
+          git checkout --detach origin/develop
+          mike deploy --push --update-aliases develop latest
+
+          git checkout --detach "${GITHUB_SHA}"
+          docs_version="${{ needs.metadata.outputs.release_branch }}"
+          docs_version="${docs_version#releases/}"
+          mike deploy --push "${docs_version}"
+          mike set-default --push latest

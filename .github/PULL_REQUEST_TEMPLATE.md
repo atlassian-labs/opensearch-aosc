@@ -15,6 +15,8 @@ List the commands you ran, for example:
 ```bash
 ./gradlew :aosc-plugin:fastCheck -Dopensearch.version=2.19.0
 ./gradlew :aosc-plugin:yamlRestTest -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:itTest -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:smokeTest2Nodes -Dopensearch.version=2.19.0
 mkdocs build --strict
 ```
 

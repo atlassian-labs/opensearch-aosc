@@ -3,7 +3,7 @@
 AOSC releases have two version axes:
 
 - **AOSC version**: the plugin project version, such as `0.1.0`.
-- **OpenSearch compatibility line**: the OpenSearch major/minor line the ZIP was built against, such as `os2.19`.
+- **OpenSearch compatibility line**: the OpenSearch major/minor line the ZIP was built against, such as `2.19`.
 
 The plugin descriptor uses a patch-compatible semver range for the selected OpenSearch minor. For example, a ZIP built with OpenSearch `2.19.0` is intended for OpenSearch `2.19.x` unless a release note says otherwise.
 
@@ -40,7 +40,7 @@ Release branches are organized by OpenSearch major line:
 
 | Branch | Purpose |
 | --- | --- |
-| `main` | Active development. |
+| `develop` | Active development. |
 | `releases/2.x` | OpenSearch 2.x maintenance and releases. |
 | `releases/3.x` | OpenSearch 3.x maintenance and releases once supported. |
 
@@ -61,16 +61,23 @@ The release workflow fails before building if the computed release tag or GitHub
 
 ## GitHub CI Policy
 
-Pull requests run the `pr-checks` job automatically. This job builds the docs and runs the fast, YAML REST, integration, and 2-node smoke test coverage against the current primary OpenSearch version from `release/<line>.properties`.
+Pull requests run full CI automatically. Full CI builds the docs and validates every OpenSearch version in `test_versions` from `release/<line>.properties`.
 
-Before merging a PR, maintainers should also run full validation for the exact PR head commit. For same-repository branches, run the `CI` workflow manually from the GitHub Actions UI and select the PR branch. For forked PRs, apply the `full-ci` label; the pull request workflow will run the same full validation on the fork head without using repository secrets.
+Full CI runs these suite categories as separate jobs so failures identify the exact affected OpenSearch version and suite:
 
-Full validation runs one matrix job per OpenSearch version in `test_versions`. Each matrix job runs fast checks, YAML REST tests, Java integration tests, all smoke topologies, and the high-shard scale profile in a single runner setup. Branch protection should require both stable check names:
+- fast checks
+- YAML REST tests
+- Java integration tests
+- 2-node smoke tests
+- dedicated cluster-manager smoke tests
+- Docker smoke tests
+- high-shard 2-node scale tests
 
-- `pr-checks`
-- `full-ci-gate`
+Pushes to `develop` and `releases/**` also run full CI. Branch protection should require the stable check name:
 
-If the PR branch changes after full validation, run full validation again before merging.
+- `Full CI`
+
+The `Release` workflow runs the same full validation before it builds release ZIPs or creates a draft GitHub release.
 
 ## GitHub Release Assets
 
@@ -85,9 +92,9 @@ Each GitHub release should include:
 Example OpenSearch 2.x assets:
 
 ```text
-opensearch-aosc-0.1.0-os2.15.0.zip
-opensearch-aosc-0.1.0-os2.17.0.zip
-opensearch-aosc-0.1.0-os2.19.0.zip
+opensearch-aosc-0.1.0-opensearch-2.15.zip
+opensearch-aosc-0.1.0-opensearch-2.17.zip
+opensearch-aosc-0.1.0-opensearch-2.19.zip
 SHA256SUMS
 ```
 
@@ -115,25 +122,25 @@ Inspect the release metadata with:
 
 ## Documentation Site
 
-GitHub Pages is deployed by the `Pages` workflow. The workflow builds all public documentation lines into one site on every push to `main` or `releases/**`:
+GitHub Pages uses MkDocs Material with `mike` versioning. Pull requests and branch pushes build the docs as CI validation only; they do not publish the site.
 
-| Source branch | Published path |
+The `Release` workflow publishes docs to the `gh-pages` branch after release validation, asset build, and draft release creation succeed. The GitHub Pages repository setting should serve from the `gh-pages` branch at `/`.
+
+The current docs layout is:
+
+| Source | Published path |
 | --- | --- |
-| `main` | `/latest/` |
+| `develop` | `/develop/` with `/latest/` alias |
 | `releases/2.x` | `/2.x/` |
 | `releases/3.x` | `/3.x/` once the branch exists. |
 
-The root page redirects to `/latest/` and lists the available versions. The Pages workflow rebuilds every available docs line each time so one branch does not overwrite another branch's published docs.
-
-The workflow deploys only when the GitHub repository is public or the organization plan enables Pages for private repositories. While the repository is private without private Pages support, the Pages workflow is skipped.
-
-Build the same versioned site locally with:
+Build the docs locally with:
 
 ```bash
-./scripts/build-pages-site.sh
+mkdocs build --strict
 ```
 
-The generated site is written to `build/pages/`.
+`mike` owns the version selector and generated `versions.json`; do not edit those files by hand.
 
 ## CI Artifacts
 

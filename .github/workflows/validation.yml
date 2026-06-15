@@ -1,0 +1,114 @@
+name: Reusable validation
+
+on:
+  workflow_call:
+    inputs:
+      os_line:
+        description: OpenSearch compatibility line
+        required: false
+        default: os2
+        type: string
+      include_docs:
+        description: Build documentation as part of validation
+        required: false
+        default: true
+        type: boolean
+      artifact_retention_days:
+        description: Retention for failure artifacts
+        required: false
+        default: 7
+        type: number
+
+permissions:
+  contents: read
+
+jobs:
+  metadata:
+    name: Validation metadata
+    runs-on: ubuntu-latest
+    outputs:
+      validation_matrix_json: ${{ steps.matrix.outputs.validation_matrix_json }}
+    steps:
+      - uses: actions/checkout@v6
+      - id: matrix
+        run: ./scripts/github-ci-matrix.sh "${{ inputs.os_line }}" --github-output
+
+  docs:
+    name: Docs
+    needs: metadata
+    if: inputs.include_docs
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+      - name: Install docs dependencies
+        run: python -m pip install 'mkdocs<2' mkdocs-material pymdown-extensions mkdocs-drawio mike
+      - name: Build docs
+        run: mkdocs build --strict
+
+  gradle:
+    name: ${{ matrix.label }} (OpenSearch ${{ matrix.opensearch_version }})
+    needs: metadata
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    strategy:
+      fail-fast: false
+      matrix:
+        include: ${{ fromJSON(needs.metadata.outputs.validation_matrix_json) }}
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "11"
+          cache: gradle
+      - name: Pre-fetch Gradle
+        run: ./scripts/ensure-gradle.sh
+      - name: Run ${{ matrix.label }}
+        env:
+          OPENSEARCH_VERSION: ${{ matrix.opensearch_version }}
+          GRADLE_ARGS: ${{ matrix.gradle_args }}
+          GRADLE_TASK: ${{ matrix.gradle_task }}
+        run: |
+          args=("-Dopensearch.version=${OPENSEARCH_VERSION}")
+          if [[ -n "${GRADLE_ARGS}" ]]; then
+            read -r -a extra_args <<< "${GRADLE_ARGS}"
+            args+=("${extra_args[@]}")
+          fi
+          ./scripts/gradle-with-retry.sh ./gradlew --no-daemon --continue "${args[@]}" "${GRADLE_TASK}"
+      - uses: actions/upload-artifact@v7
+        if: failure()
+        with:
+          name: validation-${{ matrix.id }}-${{ matrix.opensearch_version }}-${{ github.run_attempt }}
+          path: |
+            aosc-plugin/build/reports/**
+            aosc-plugin/build/test-results/**
+          if-no-files-found: ignore
+          retention-days: ${{ inputs.artifact_retention_days }}
+
+  result:
+    name: Validation result
+    needs:
+      - metadata
+      - docs
+      - gradle
+    if: always()
+    runs-on: ubuntu-latest
+    steps:
+      - name: Check reusable validation result
+        run: |
+          if [[ "${{ needs.metadata.result }}" != "success" ]]; then
+            echo "Validation metadata failed: ${{ needs.metadata.result }}" >&2
+            exit 1
+          fi
+          if [[ "${{ inputs.include_docs }}" == "true" && "${{ needs.docs.result }}" != "success" ]]; then
+            echo "Docs validation failed: ${{ needs.docs.result }}" >&2
+            exit 1
+          fi
+          if [[ "${{ needs.gradle.result }}" != "success" ]]; then
+            echo "Gradle validation failed: ${{ needs.gradle.result }}" >&2
+            exit 1
+          fi

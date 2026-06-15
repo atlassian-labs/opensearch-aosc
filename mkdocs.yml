@@ -1,7 +1,7 @@
 # MkDocs configuration for the AOSC plugin documentation site.
 #
 # Local preview:
-#   pip install mkdocs-material pymdown-extensions mkdocs-drawio
+#   pip install mkdocs-material pymdown-extensions mkdocs-drawio mike
 #   mkdocs serve
 
 site_name: AOSC - Automatic Online Schema Change
@@ -14,7 +14,7 @@ site_url: https://atlassian-labs.github.io/opensearch-aosc/
 
 repo_name: atlassian-labs/opensearch-aosc
 repo_url: https://github.com/atlassian-labs/opensearch-aosc
-edit_uri: edit/main/docs/
+edit_uri: edit/develop/docs/
 docs_dir: docs
 site_dir: site
 
@@ -73,6 +73,9 @@ extra_javascript:
 
 extra:
   generator: false
+  version:
+    provider: mike
+    alias: true
   social: []
 
 markdown_extensions:

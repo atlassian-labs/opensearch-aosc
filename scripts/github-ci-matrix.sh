@@ -25,52 +25,38 @@ csv_to_json() {
   printf ']'
 }
 
-smoke_task() {
-  case "$1" in
-    docker) printf '%s\n' "smokeTestDocker" ;;
-    *) printf '%s\n' "smokeTest" ;;
-  esac
-}
-
-smoke_matrix_json() {
-  local versions_csv="$1"
-  local topologies_csv="$2"
-  local IFS=','
-  local first=true
-  local version
-  local topology
-
-  printf '['
-  for version in ${versions_csv}; do
-    for topology in ${topologies_csv}; do
-      if [[ "${first}" == "true" ]]; then
-        first=false
-      else
-        printf ','
-      fi
-      printf '{"opensearch_version":"%s","topology":"%s","task":"%s"}' \
-        "${version}" "${topology}" "$(smoke_task "${topology}")"
-    done
-  done
-  printf ']'
-}
-
-scale_matrix_json() {
-  local versions_csv="$1"
+validation_matrix_json() {
   local IFS=','
   local first=true
   local version
 
   printf '['
-  for version in ${versions_csv}; do
-    if [[ "${first}" == "true" ]]; then
-      first=false
-    else
-      printf ','
-    fi
-    printf '{"opensearch_version":"%s","topology":"2n","profile":"high-shard"}' "${version}"
+  for version in ${TEST_VERSIONS}; do
+    emit_validation_row "${first}" "${version}" "fast-check" "fastCheck" ":aosc-plugin:fastCheck" ""
+    first=false
+    emit_validation_row "${first}" "${version}" "yaml-rest" "yamlRestTest" ":aosc-plugin:yamlRestTest" ""
+    emit_validation_row "${first}" "${version}" "integration" "itTest" ":aosc-plugin:itTest" ""
+    emit_validation_row "${first}" "${version}" "smoke-2n" "smokeTest2Nodes" ":aosc-plugin:smokeTest2Nodes" ""
+    emit_validation_row "${first}" "${version}" "smoke-dedicated-cm" "smokeTestDedicatedCM" ":aosc-plugin:smokeTestDedicatedCM" ""
+    emit_validation_row "${first}" "${version}" "smoke-docker" "smokeTestDocker" ":aosc-plugin:smokeTestDocker" ""
+    emit_validation_row "${first}" "${version}" "scale-high-shard-2n" "scaleTest high-shard 2n" ":aosc-plugin:scaleTest" "-Dcluster.topology=2n -Dscale.profile=high-shard"
   done
   printf ']'
+}
+
+emit_validation_row() {
+  local first="$1"
+  local version="$2"
+  local id="$3"
+  local label="$4"
+  local gradle_task="$5"
+  local gradle_args="$6"
+
+  if [[ "${first}" != "true" ]]; then
+    printf ','
+  fi
+  printf '{"opensearch_version":"%s","id":"%s","label":"%s","gradle_task":"%s","gradle_args":"%s"}' \
+    "${version}" "${id}" "${label}" "${gradle_task}" "${gradle_args}"
 }
 
 emit_github_output() {
@@ -92,9 +78,7 @@ emit_output_lines() {
     echo "release_tag=${RELEASE_TAG}"
     echo "build_versions_json=$(csv_to_json "${BUILD_VERSIONS}")"
     echo "test_versions_json=$(csv_to_json "${TEST_VERSIONS}")"
-    echo "pr_smoke_matrix_json=$(smoke_matrix_json "${BUILD_VERSIONS}" "cm,docker")"
-    echo "main_smoke_matrix_json=$(smoke_matrix_json "${TEST_VERSIONS}" "2n,cm,docker")"
-    echo "scale_matrix_json=$(scale_matrix_json "${TEST_VERSIONS}")"
+    echo "validation_matrix_json=$(validation_matrix_json)"
   }
 }
 

@@ -171,4 +171,41 @@ public class CoordinatorUpdateChannelTests extends OpenSearchTestCase {
         assertTrue("never more than one in flight, was " + maxConcurrent.get(), maxConcurrent.get() <= 1);
         channel.close();
     }
+
+    // Build-at-send-time: a send queued while another is in flight reads the phase AT SEND TIME,
+    // not when it was requested. This is what makes a late tick unable to put a stale phase on the
+    // wire after a newer one — the queued send always picks up whatever the current phase has become.
+    public void testQueuedSendReadsPhaseAtSendTimeNotRequestTime() throws Exception {
+        // Manual-ack client: capture the phase + listener, do NOT ack until the test says so.
+        List<ActionListener<UpdateShardMigrationStatusResponse>> pending = new ArrayList<>();
+        doAnswer(inv -> {
+            UpdateShardMigrationStatusRequest req = inv.getArgument(1);
+            received.add(req.body().progress().phase());
+            pending.add(inv.getArgument(2));
+            return null;
+        }).when(client).execute(any(), any(), any());
+
+        currentPhase.set(ShardPhase.CONVERGED);
+        CoordinatorUpdateChannel channel = newChannel(10);
+
+        channel.heartbeat(); // send #1 fires at CONVERGED, held in flight (not yet ack'd)
+        assertEquals(1, pending.size());
+        assertEquals(ShardPhase.CONVERGED, received.get(0));
+
+        channel.heartbeat(); // requested while phase is STILL CONVERGED and the gate is held -> queued, not sent
+        assertEquals("single-in-flight: the second request is queued, not sent", 1, pending.size());
+
+        currentPhase.set(ShardPhase.COMPLETED); // phase advances AFTER the queued request, before it actually sends
+
+        pending.get(0).onResponse(new UpdateShardMigrationStatusResponse()); // ack #1 -> drains the queued send
+        assertEquals(2, pending.size());
+        assertEquals(
+            "queued send must carry the phase at SEND time (COMPLETED), not request time (CONVERGED)",
+            ShardPhase.COMPLETED,
+            received.get(1)
+        );
+
+        pending.get(1).onResponse(new UpdateShardMigrationStatusResponse());
+        channel.close();
+    }
 }

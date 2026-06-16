@@ -1,0 +1,113 @@
+#sm-viz {
+  margin: 1.5em 0;
+  font-family: var(--md-text-font-family, inherit);
+}
+.sm-controls {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 1em;
+  margin-bottom: 1em;
+}
+.sm-btn {
+  padding: 0.4em 1.2em;
+  border: 1px solid var(--md-default-fg-color--lighter);
+  border-radius: 4px;
+  background: var(--md-code-bg-color);
+  color: var(--md-default-fg-color);
+  cursor: pointer;
+  font-size: 0.85em;
+}
+.sm-btn:disabled {
+  opacity: 0.3;
+  cursor: default;
+}
+.sm-btn:hover:not(:disabled) {
+  background: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color);
+}
+.sm-step-label {
+  font-weight: 700;
+  font-size: 1.1em;
+  min-width: 14em;
+  text-align: center;
+}
+.sm-desc {
+  text-align: center;
+  margin-bottom: 1em;
+  color: var(--md-default-fg-color--light);
+}
+.sm-signal-row {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  margin: 0.6em 0;
+  padding: 0.4em;
+  border-radius: 4px;
+  font-size: 0.85em;
+  gap: 0.15em;
+}
+.sm-signal-down {
+  background: rgba(33, 150, 243, 0.1);
+}
+.sm-signal-up {
+  background: rgba(76, 175, 80, 0.1);
+}
+.sm-signal-none {
+  background: transparent;
+}
+.sm-signal-dir {
+  font-weight: 600;
+  font-size: 0.75em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--md-default-fg-color--lighter);
+}
+.sm-signal-msg {
+  font-weight: 600;
+  color: var(--md-accent-fg-color);
+}
+.sm-tier {
+  margin: 0.5em 0;
+}
+.sm-tier-label {
+  font-weight: 600;
+  font-size: 0.8em;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  margin-bottom: 0.4em;
+  color: var(--md-default-fg-color--light);
+}
+.sm-phases {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.3em;
+}
+.sm-phase {
+  padding: 0.3em 0.6em;
+  border-radius: 4px;
+  font-size: 0.75em;
+  font-weight: 500;
+  white-space: nowrap;
+  transition: all 0.3s ease;
+}
+.sm-pending {
+  background: var(--md-default-fg-color--lightest);
+  color: var(--md-default-fg-color--lighter);
+}
+.sm-active {
+  background: var(--md-accent-fg-color);
+  color: var(--md-accent-bg-color, #fff);
+  box-shadow: 0 0 8px rgba(var(--md-accent-fg-color--rgb, 0, 0, 0), 0.3);
+  transform: scale(1.08);
+}
+.sm-done {
+  background: #2e7d32;
+  color: #fff;
+}
+.sm-progress {
+  text-align: center;
+  margin-top: 0.8em;
+  font-size: 0.75em;
+  color: var(--md-default-fg-color--lighter);
+}

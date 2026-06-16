@@ -1,4 +1,4 @@
-# Code Organisation
+# Code Layout
 
 AOSC source lives under `aosc-plugin/src/main/java/com/atlassian/opensearch/aosc/`.
 
@@ -14,7 +14,7 @@ AOSC source lives under `aosc-plugin/src/main/java/com/atlassian/opensearch/aosc
 | `aosc-plugin/src/benchmarkTest/` | Benchmark tests. |
 | `aosc-plugin/src/yamlRestTest/` | YAML REST tests. |
 | `aosc-plugin/opensearch-docker/` | Local Docker cluster. |
-| `docs/` | MkDocs documentation. |
+| `docs/` | VitePress documentation. |
 
 ## Main Packages
 

@@ -7,11 +7,13 @@ AOSC tracks migration progress at two levels:
 
 Active state is coordinated through cluster state and in-memory coordinator caches. Detailed and terminal migration documents are stored in `.aosc-migrations`.
 
-## Interactive Walkthrough
+For the visual migration walkthrough, see [How AOSC Works](../how-it-works.md). That walkthrough is checked against the phase enums and transition tables in:
 
-Step through a successful migration to see how coordinator and shard phases progress together.
+- `CoordinatorPhase` and `MigrationCoordinator`
+- `ShardPhase` and `ShardMigrationWorker`
+- the `_status` response shape documented in [REST API](rest-api.md)
 
-<div id="sm-viz"></div>
+This page is the phase reference. Cancellation and failure are interrupt paths from non-terminal states; see the diagrams below for those transitions.
 
 ## Coordinator Phases
 

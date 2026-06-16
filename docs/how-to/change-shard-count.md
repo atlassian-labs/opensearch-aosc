@@ -4,9 +4,15 @@ Use AOSC when you need to move data into a target index with a different shard c
 
 ## 1. Review Routing Risk
 
-Shard count changes are safest when documents do not rely on custom routing. If the source uses custom routing and the routing mode falls back to the bulk API path, AOSC requires explicit consent with `accept_data_loss_if_custom_routing_is_used`.
+Shard count changes are safest when AOSC can keep source-shard ownership unambiguous. AOSC detects one of these routing modes:
 
-Check the source index settings and application write path before proceeding.
+| Source to target shards | Mode | Guidance |
+|-------------------------|------|----------|
+| `N -> N` | `SAME_SHARD` | Safest path for custom-routed indices. |
+| `N -> kN`, where `k` is a power of 2 | `SPLIT_SHARD` | Supported for custom routing; delete replay fans out within the target shard group. |
+| Shrink, non-multiple change, or non-power-of-2 expansion | `BULK_API` | Requires `accept_data_loss_if_custom_routing_is_used`; custom-routed deletes can leave stale target documents. |
+
+Check the source index settings and application write path before proceeding. If the source uses tenant routing, container replication, or any client-supplied `_routing`, read [Routing and Replay](../concepts/routing-and-replay) before choosing the target shard count.
 
 ## 2. Create the Target Index
 
@@ -41,6 +47,20 @@ curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_start' \
 ```
 
 If AOSC rejects the migration because of routing risk, review the reason before setting `accept_data_loss_if_custom_routing_is_used`. Do not use that option as a generic bypass.
+
+```bash
+curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_start' \
+  -H 'Content-Type: application/json' \
+  -d '{
+    "target_index": "my-index-v2",
+    "alias": "my-index",
+    "options": {
+      "accept_data_loss_if_custom_routing_is_used": true
+    }
+  }'
+```
+
+Only set the option when you have accepted the possibility of stale target documents for custom-routed deletes.
 
 ## 4. Monitor
 

@@ -1,3 +1,8 @@
+---
+aside: false
+pageClass: aosc-wide-page
+---
+
 # Architecture Overview
 
 AOSC separates migration orchestration from shard-local data movement.
@@ -29,6 +34,10 @@ graph LR
     Coord -->|Alias swap| Alias[Index alias]
 ```
 
+Backfill reads source documents, applies the configured transform, and indexes target documents with the same ID and routing when routing is present.
+
+Replay reads source operation history through OpenSearch shard APIs. Index/create operations are transformed and indexed into the target. Delete operations are applied to the target according to the detected routing mode.
+
 ## Start Preconditions
 
 Before accepting a migration, AOSC validates that:
@@ -57,6 +66,18 @@ AOSC does not create the target index.
 AOSC prefers failing closed over serving a partial cutover. Before alias swap, failure should leave the alias on the source. If alias swap has already completed, AOSC does not roll the alias back automatically because writes may already be landing on the target.
 
 Cancellation and failure cleanup release leases and remove the source write block where possible. Target index deletion is manual.
+
+## Transform Boundary
+
+The base plugin supports the OpenSearch `update` script context. Scripts mutate `ctx._source`; omit `transform_script` for identity behavior.
+
+Built-in transforms are one-source-document to one-target-document. Fan-out, joins, external lookups, and cross-cluster movement are outside the base plugin contract.
+
+## Backpressure Boundary
+
+AOSC limits migration pressure with per-node backfill permits, fixed or adaptive batch sizing, optional adaptive backfill concurrency, and overload backoff after repeated write failures. See [Backpressure and Throttling](backpressure-and-throttling.md).
+
+Do not treat AOSC as zero-interruption or universally safe. It has a source write block during cutover, same-cluster scope, and routing constraints that must be reviewed before changing shard counts.
 
 ## Data Model
 

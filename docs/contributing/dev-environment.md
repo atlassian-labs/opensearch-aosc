@@ -1,5 +1,9 @@
 # Development Environment Setup
 
+For the public contribution contract, use the repository root [`CONTRIBUTING.md`](https://github.com/atlassian-labs/opensearch-aosc/blob/develop/CONTRIBUTING.md). It covers issues, pull requests, commit-message conventions, code formatting, and license headers.
+
+The contributing pages in this documentation are source-tree workflow references. They cover local setup, test selection, package layout, release mechanics, and extension points for people changing AOSC code.
+
 ## Prerequisites
 
 | Tool | Minimum | Notes |
@@ -80,7 +84,7 @@ opensearch-aosc/
 |   |-- src/benchmarkTest/      # Benchmark tests
 |   |-- src/yamlRestTest/       # YAML REST tests
 |   `-- opensearch-docker/      # Local Docker cluster
-|-- docs/                       # MkDocs documentation
+|-- docs/                       # VitePress documentation
 |-- gradle/                     # Wrapper and formatter config
 `-- scripts/                    # Public helper scripts
 ```

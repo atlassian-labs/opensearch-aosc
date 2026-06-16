@@ -1,0 +1,20 @@
+{
+  "name": "opensearch-aosc",
+  "version": "0.0.0",
+  "private": true,
+  "description": "Documentation tooling for the OpenSearch AOSC plugin.",
+  "scripts": {
+    "docs:dev": "vitepress dev docs --host 127.0.0.1",
+    "docs:build": "vitepress build docs",
+    "docs:preview": "vitepress preview docs --host 127.0.0.1"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/atlassian-labs/opensearch-aosc.git"
+  },
+  "license": "Apache-2.0",
+  "devDependencies": {
+    "mermaid": "^11.15.0",
+    "vitepress": "^1.6.4"
+  }
+}

@@ -17,7 +17,7 @@ AOSC does not define a separate stable error-code namespace. Errors are surfaced
 | `Transform script dry-run failed` | Script failed validation against an empty context or missing params. | Add params or make the script defensive. |
 | `validation_query failed on index` | The validation query failed against source or target. | Fix the query or mappings. |
 | `transient_target_settings keys must start with 'index.'` | Option contains invalid target setting key. | Use OpenSearch index setting keys. |
-| `Custom routing detected` or data-loss consent text | Routing mode cannot guarantee custom-routed deletes. | Reconsider shard plan or set consent only after review. |
+| `Custom routing detected` or data-loss consent text | AOSC selected `BULK_API` routing mode. Custom-routed deletes cannot be guaranteed because OpenSearch delete history does not carry routing. | Prefer same-shard or power-of-2 expansion, or set consent only after review. |
 
 ## Runtime Failures
 

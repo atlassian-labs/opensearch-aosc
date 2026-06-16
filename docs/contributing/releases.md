@@ -147,9 +147,9 @@ Inspect the release metadata with:
 
 ## Documentation Site
 
-GitHub Pages uses MkDocs Material with `mike` versioning. Pull requests build the docs as CI validation only; they do not publish the site.
+GitHub Pages uses VitePress. Pull requests build the docs as CI validation only; they do not publish the site.
 
-The `Publish Release` workflow publishes release docs to the `gh-pages` branch after release validation, asset build, and draft release creation succeed. The GitHub Pages repository setting should serve from the `gh-pages` branch at `/`.
+The docs workflows store versioned site output on the `gh-pages` branch, then deploy the complete site with GitHub Pages Actions. The GitHub Pages repository setting should use GitHub Actions as the source.
 
 Pushes to `develop` publish the current development docs to `/develop/` after full CI passes.
 
@@ -166,14 +166,29 @@ Release documentation is versioned by AOSC minor line plus OpenSearch major line
 Build the docs locally with:
 
 ```bash
-mkdocs build --strict
+npm ci
+npm run docs:build
 ```
 
-`mike` owns the version selector and generated `versions.json`; do not edit those files by hand.
+The docs deploy script owns the generated `versions.json` and root redirect on `gh-pages`; do not edit those files by hand.
 
 ## CI Artifacts
 
 CI uploads Gradle reports and test results only when a validation job fails. Normal CI artifacts expire after 7 days; publish workflow test artifacts expire after 14 days. Release ZIPs are not CI artifacts; they are attached to GitHub Releases.
+
+## Runtime Version Checks
+
+Installed plugin versions can be checked with:
+
+```bash
+curl -s 'http://localhost:9200/_cat/plugins?v'
+```
+
+A built ZIP descriptor can be inspected with:
+
+```bash
+unzip -p aosc-plugin/build/distributions/opensearch-aosc-*.zip plugin-descriptor.properties
+```
 
 ## First Public Import
 

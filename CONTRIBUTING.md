@@ -2,6 +2,12 @@
 
 This project accepts issues and pull requests through GitHub. AOSC is an Atlassian Labs project maintained on a best-effort basis; there is no guaranteed response time or roadmap commitment.
 
+## Where Contribution Information Lives
+
+Use this file for the public contribution contract: how to report issues, open pull requests, write commit messages, format code, and satisfy licensing expectations.
+
+Use the documentation site's [development environment guide](docs/contributing/dev-environment.md) and related contributing pages for source-tree workflow details such as local environment setup, test commands, code layout, release notes, and extension points. Those pages are practical engineering references; this file is the checklist a GitHub contributor should read before opening a pull request.
+
 ## Reporting Bugs and Requesting Features
 
 Open a GitHub issue with:
@@ -18,10 +24,11 @@ Avoid attaching production data or secrets.
 
 Before sending a pull request:
 
-1. Work from the latest `main` branch.
+1. Work from the latest `develop` branch.
 2. Check existing issues and pull requests for overlap.
 3. Open an issue first for broad design changes or behavior changes.
 4. Keep the pull request focused on one problem.
+5. Review the local workflow docs when changing source code, tests, releases, or extension APIs.
 
 Run at least the core checks for the OpenSearch version you changed against:
 

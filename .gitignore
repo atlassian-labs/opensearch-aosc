@@ -46,6 +46,10 @@ bin/
 
 # needed in case docs build is run...maybe we can configure doc build to generate files under build?
 html_docs
+node_modules/
+docs/.vitepress/dist/
+docs/.vitepress/cache/
+npm-debug.log*
 
 # random old stuff that we should look at the necessity of...
 /tmp/

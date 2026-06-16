@@ -48,7 +48,7 @@ Useful inputs:
 
 ## Cutover Planning
 
-During cutover AOSC blocks source writes, replays final operations, validates document counts, swaps the alias, and optionally removes the source write block. Atlassian has observed successful production cutovers where the application-visible write interruption was about 2 seconds to 30 seconds, including a 50 TB index at about 30 seconds. This is an observation, not an upper bound; validation, alias update, cluster-manager responsiveness, shard count, cluster health, and write load can make specific runs shorter or longer. Measure it in staging or a representative environment before relying on a specific window.
+During cutover AOSC blocks source writes, replays final operations, validates document counts, swaps the alias, and optionally removes the source write block. Successful production cutovers have been observed where the application-visible write interruption was about 2 seconds to 30 seconds, including a 50 TB index at about 30 seconds. This is an observation, not an upper bound; validation, alias update, cluster-manager responsiveness, shard count, cluster health, and write load can make specific runs shorter or longer. Measure it in staging or a representative environment before relying on a specific window.
 
 ## Rollback Planning
 

@@ -8,6 +8,8 @@ Public repository history starts from the OSS import. Earlier internal developme
 
 Documentation is published at <https://atlassian-labs.github.io/opensearch-aosc/>.
 
+For a visual walkthrough of how writes, shard workers, and alias cutover behave during a migration, start with <https://atlassian-labs.github.io/opensearch-aosc/develop/how-it-works>.
+
 ## Supported OpenSearch Versions
 
 The build currently declares support for OpenSearch `2.15.0`, `2.17.0`, and `2.19.0`. Build the plugin with the exact target version:
@@ -108,7 +110,7 @@ curl -s http://localhost:9200/_cluster/health | jq '.'
 ```text
 opensearch-aosc/
 |-- aosc-plugin/        # Plugin source, tests, packaging, and Docker test cluster
-|-- docs/               # MkDocs documentation
+|-- docs/               # VitePress documentation
 |-- gradle/             # Gradle wrapper and formatter config
 |-- scripts/            # Public helper scripts
 |-- build.gradle        # Root build configuration
@@ -117,12 +119,13 @@ opensearch-aosc/
 
 ## Documentation
 
-- [Getting Started](docs/get-started/) - concepts and first migration
-- [How-to Guides](docs/how-to/) - install, plan, transform, and clean up
-- [Operations](docs/operations/) - monitoring and recovery notes
-- [Reference](docs/reference/) - REST API, settings, states, and limitations
-- [Concepts](docs/concepts/) - architecture and tradeoffs
-- [Contributing](docs/contributing/) - local setup and contribution guidance
+- [What Is AOSC?](docs/get-started/what-is-aosc.md) - concepts and vocabulary
+- [Your First Migration](docs/get-started/your-first-migration.md) - copy-paste local walkthrough
+- [Install the Plugin](docs/how-to/install-the-plugin.md) - build and install steps
+- [Monitor a Migration](docs/operations/monitor-a-migration.md) - status and progress interpretation
+- [REST API Reference](docs/reference/rest-api.md) - endpoints, request fields, and response shapes
+- [Architecture Overview](docs/concepts/architecture-overview.md) - architecture and tradeoffs
+- [Development Environment](docs/contributing/dev-environment.md) - local setup and contribution workflow
 - [Releases](docs/contributing/releases.md) - versioning and release assets
 - [Extension Points](docs/contributing/extensions.md) - public extension API notes
 

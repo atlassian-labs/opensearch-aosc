@@ -37,7 +37,7 @@ POST /_plugins/_aosc/{index}/_start
 | `max_convergence_rounds_per_shard` | cluster default, currently `1000` | Replay/convergence round limit. |
 | `doc_count_tolerance` | `0` | Accepted source/target document count difference at cutover. |
 | `validation_query` | unset | Query DSL used to filter source and target counts during validation. |
-| `accept_data_loss_if_custom_routing_is_used` | `false` | Required for routing modes where custom-routed deletes cannot be guaranteed. |
+| `accept_data_loss_if_custom_routing_is_used` | `false` | Required for `BULK_API` routing topologies. In that mode, deletes are replayed without the original routing key and can miss custom-routed target documents. |
 | `target_ready_timeout_seconds` | cluster default, currently `14400` | Target readiness timeout. |
 | `remove_source_write_block_on_success` | cluster default, currently `false` | Remove the source write block after successful cutover. |
 | `transient_target_settings` | cluster default | Target settings applied during migration and restored later. |

@@ -1,62 +1,41 @@
----
-hide:
-  - toc
----
-
 # AOSC - Automatic Online Schema Change
 
-AOSC moves an OpenSearch index to a pre-created target index while the source remains live for most of the migration. It backfills existing documents, replays source operation history, then briefly blocks source writes to finish catch-up and swap an alias.
+<p class="aosc-home-lede">
+AOSC moves an OpenSearch index to a pre-created target index while the source remains live. It backfills existing documents, replays source operation history, then briefly blocks source writes to finish catch-up and swap an alias.
+</p>
 
-<div class="grid cards" markdown>
+<div class="aosc-home-actions">
+  <a class="aosc-primary-action" href="./get-started/your-first-migration">Run a first migration</a>
+  <a class="aosc-secondary-action" href="./how-it-works">See how it works</a>
+</div>
 
--   :material-rocket-launch:{ .lg .middle } **Get Started**
+<div class="aosc-fact-grid">
+  <section>
+    <span>Online path</span>
+    <p>Backfill and replay run while the source index continues serving application traffic.</p>
+  </section>
+  <section>
+    <span>Explicit cutover</span>
+    <p>Source writes are blocked only for final replay, validation, and alias swap.</p>
+  </section>
+  <section>
+    <span>Operational visibility</span>
+    <p>Status APIs expose coordinator phase, shard phase, counters, and errors.</p>
+  </section>
+</div>
 
-    ---
+::: tip When AOSC fits
+AOSC is for same-cluster index migrations where you need a new target index for mappings, settings, shard layout, or document shape, but the source index must keep receiving traffic during most of the move.
+:::
 
-    Learn the model and run a local migration.
+::: warning Cutover is not zero-interruption
+Applications must retry writes rejected during the brief source write block. Successful cutovers have been observed in the 2s-30s range, but your window depends on index size, shard count, write load, and cluster-manager responsiveness.
+:::
 
-    [:octicons-arrow-right-24: Start here](get-started/index.md)
-
--   :material-book-open-variant:{ .lg .middle } **How-to Guides**
-
-    ---
-
-    Install the plugin, prepare a target index, transform documents, and clean up.
-
-    [:octicons-arrow-right-24: Browse guides](how-to/index.md)
-
--   :material-monitor-dashboard:{ .lg .middle } **Operations**
-
-    ---
-
-    Monitor migrations and diagnose common stuck phases.
-
-    [:octicons-arrow-right-24: Ops notes](operations/index.md)
-
--   :material-code-braces:{ .lg .middle } **Reference**
-
-    ---
-
-    REST API, settings, state machine phases, errors, and current limitations.
-
-    [:octicons-arrow-right-24: Look it up](reference/index.md)
-
--   :material-lightbulb-on:{ .lg .middle } **Concepts**
-
-    ---
-
-    Architecture, correctness model, backpressure, and tradeoffs.
-
-    [:octicons-arrow-right-24: Deep dives](concepts/index.md)
-
--   :material-source-branch:{ .lg .middle } **Contributing**
-
-    ---
-
-    Local development, tests, and contribution conventions.
-
-    [:octicons-arrow-right-24: Contribute](contributing/index.md)
-
+<div class="vp-card-grid">
+  <a class="vp-card" href="./get-started/your-first-migration"><strong>Run it locally</strong><span>Build the plugin, start a test cluster, keep writes running, and watch cutover.</span></a>
+  <a class="vp-card" href="./how-it-works"><strong>Understand the flow</strong><span>Follow source writes, shard workers, catch-up, and alias movement step by step.</span></a>
+  <a class="vp-card" href="./reference/rest-api"><strong>Use the API</strong><span>Start, monitor, cancel, list, and clean up migrations from REST endpoints.</span></a>
 </div>
 
 ## Why AOSC?
@@ -71,25 +50,3 @@ AOSC automates the parts that are risky to do by hand:
 - Perform alias cutover after a source write block and final catch-up.
 
 AOSC still requires planning. The target index must be created first, applications must use an alias for cutover, and applications must retry writes rejected during the cutover write block.
-
-## API Shape
-
-These examples assume the source index, pre-created target index, and write alias already exist. For a runnable local walkthrough, start with [Your First Migration](get-started/your-first-migration.md).
-
-```bash
-# Start a migration from source index my-index-v1 to target my-index-v2
-curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_start' \
-  -H 'Content-Type: application/json' \
-  -d '{"target_index":"my-index-v2","alias":"my-index"}'
-
-# Check migration status
-curl -s 'http://localhost:9200/_plugins/_aosc/my-index-v1/_status' | jq '.'
-
-# Cancel a migration
-curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_cancel'
-
-# List migrations
-curl -s 'http://localhost:9200/_plugins/_aosc/_list' | jq '.'
-```
-
-See [REST API Reference](reference/rest-api.md) for request and response details.

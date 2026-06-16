@@ -82,14 +82,43 @@ curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_start' \
 
 ## Common Patterns
 
-| Task | Painless source |
-|------|-----------------|
-| Rename field | `ctx._source.new_field = ctx._source.remove("old_field")` |
-| Convert to long | `ctx._source.count = Long.parseLong(ctx._source.count.toString())` |
-| Computed field | `ctx._source.full_name = ctx._source.first_name + " " + ctx._source.last_name` |
-| Remove field | `ctx._source.remove("unused_field")` |
-| Default value | `if (ctx._source.region == null) { ctx._source.region = "unknown" }` |
-| Nested access | `ctx._source.author.name = ctx._source.author.name.toUpperCase()` |
+Rename a field:
+
+```text
+ctx._source.new_field = ctx._source.remove("old_field")
+```
+
+Convert a value to a long:
+
+```text
+ctx._source.count = Long.parseLong(ctx._source.count.toString())
+```
+
+Create a computed field:
+
+```text
+ctx._source.full_name = ctx._source.first_name + " " + ctx._source.last_name
+```
+
+Remove a field:
+
+```text
+ctx._source.remove("unused_field")
+```
+
+Set a default value:
+
+```text
+if (ctx._source.region == null) {
+  ctx._source.region = "unknown"
+}
+```
+
+Update a nested field:
+
+```text
+ctx._source.author.name = ctx._source.author.name.toUpperCase()
+```
 
 ## Validation Behavior
 

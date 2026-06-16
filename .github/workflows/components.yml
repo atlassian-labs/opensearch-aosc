@@ -41,13 +41,14 @@ jobs:
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
-      - uses: actions/setup-python@v6
+      - uses: actions/setup-node@v6
         with:
-          python-version: "3.12"
+          node-version: "22"
+          cache: npm
       - name: Install docs dependencies
-        run: python -m pip install 'mkdocs<2' mkdocs-material pymdown-extensions mkdocs-drawio mike
+        run: npm ci
       - name: Build docs
-        run: mkdocs build --strict
+        run: npm run docs:build
 
   gradle:
     name: ${{ matrix.label }} (OpenSearch ${{ matrix.opensearch_version }})

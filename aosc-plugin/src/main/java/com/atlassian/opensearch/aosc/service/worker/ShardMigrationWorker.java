@@ -8,9 +8,6 @@
 package com.atlassian.opensearch.aosc.service.worker;
 
 import com.atlassian.opensearch.aosc.AoscSettings;
-import com.atlassian.opensearch.aosc.action.update.UpdateShardMigrationStatusAction;
-import com.atlassian.opensearch.aosc.action.update.UpdateShardMigrationStatusBody;
-import com.atlassian.opensearch.aosc.action.update.UpdateShardMigrationStatusRequest;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 import com.atlassian.opensearch.aosc.model.ShardProgressDocument;
@@ -22,8 +19,6 @@ import com.atlassian.opensearch.aosc.service.worker.TranslogReplayEngine.ReplayR
 import com.atlassian.opensearch.aosc.statemachine.AwaitableStateMachine;
 import com.atlassian.opensearch.aosc.transform.TransformFunction;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
-import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
-import com.atlassian.opensearch.aosc.utils.AsyncUtils;
 import com.atlassian.opensearch.aosc.utils.LC;
 import com.atlassian.opensearch.aosc.utils.MigrationAuditLogger;
 import com.atlassian.opensearch.aosc.utils.ShardHandle;
@@ -54,7 +49,7 @@ import static com.atlassian.opensearch.aosc.utils.AoscLogger.kv;
 public class ShardMigrationWorker implements Closeable {
 
     private static final int MAX_PHASE_UPDATE_RETRIES = 10;
-    private static final long PHASE_UPDATE_BASE_DELAY_MS = 5_000;
+    private static final long STATUS_RETRY_BASE_DELAY_MS = 5_000;
     private static final long PROGRESS_TICK_INTERVAL_MS = 10_000;
     private static final long LEASE_RENEWAL_INTERVAL_MS = 10_000;
 
@@ -67,6 +62,7 @@ public class ShardMigrationWorker implements Closeable {
     private final AoscLogger logger;
     private final ExecutorService smExecutor;
     private final AwaitableStateMachine<ShardPhase> sm;
+    private final CoordinatorUpdateChannel coordinatorUpdates;
     private final RetentionLeaseManager leaseManager;
     private final TranslogReplayEngine replayEngine;
     private final BackfillEngine backfillEngine;
@@ -209,6 +205,16 @@ public class ShardMigrationWorker implements Closeable {
         // Timers are started in start(), not constructor — avoids resource leak if start() is never called
 
         this.sm = buildStateMachine();
+        this.coordinatorUpdates = new CoordinatorUpdateChannel(
+            logger,
+            client,
+            threadPool,
+            migrationId,
+            shardId,
+            () -> buildProgress(sm.currentState()),
+            STATUS_RETRY_BASE_DELAY_MS,
+            MAX_PHASE_UPDATE_RETRIES
+        );
     }
 
     // ---- Public API ----
@@ -273,6 +279,7 @@ public class ShardMigrationWorker implements Closeable {
     public void close() {
         if (!closed.compareAndSet(false, true)) return;
         cancelTimers();
+        coordinatorUpdates.close();
         // Cancel engines — this sets their cancelled flag AND eagerly releases index resources
         backfillEngine.cancel();
         replayEngine.cancel();
@@ -330,7 +337,7 @@ public class ShardMigrationWorker implements Closeable {
         // Write barrier — notify coordinator of each phase transition.
         builder.writeBarrier((from, to) -> {
             MigrationAuditLogger.recordShardPhaseTransition(migrationId, shardId, from.name(), to.name(), null);
-            return sendUpdateToCoordinator(to);
+            return coordinatorUpdates.reportTransition(to);
         });
 
         // Terminal callback — runs AFTER write barrier (coordinator already notified).
@@ -648,11 +655,10 @@ public class ShardMigrationWorker implements Closeable {
     // ---- Progress timer ----
 
     private void onProgressTick() {
-        ShardPhase phase = sm.currentState();
-        if (ShardPhase.TERMINALS.contains(phase)) return;
-        // fire-and-forget: periodic ticks are best-effort; write barrier handles critical phase transitions.
-        // PENDING shards send ticks too — they're alive but waiting for a backfill permit.
-        sendUpdateToCoordinator(phase);
+        if (ShardPhase.TERMINALS.contains(sm.currentState())) return;
+        // Heartbeat. The channel reads the current phase at send time and keeps a single send in
+        // flight, so a tick can never reorder past the (blocking) write barrier.
+        coordinatorUpdates.heartbeat();
     }
 
     // ---- Lease renewal ----
@@ -682,15 +688,11 @@ public class ShardMigrationWorker implements Closeable {
         });
     }
 
-    // ---- Phase update ----
+    // ---- Progress snapshot ----
 
-    private CompletableFuture<Void> sendUpdateToCoordinator(ShardPhase phase) {
-        return sendUpdateToCoordinatorWithRetry(phase, 0);
-    }
-
-    private CompletableFuture<Void> sendUpdateToCoordinatorWithRetry(ShardPhase phase, int attempt) {
-        logger.trace("Sending phase update to coordinator: {} (attempt {})", phase, attempt);
-        ShardProgressDocument progress = ShardProgressDocument.builder()
+    /** Build a point-in-time snapshot of this shard's progress for the given phase. */
+    private ShardProgressDocument buildProgress(ShardPhase phase) {
+        return ShardProgressDocument.builder()
             .phase(phase)
             .lastReplayedSeqNo(lastReplayedSeqNo)
             .targetSeqNo(shardHandle.getGlobalCheckpointSafe())
@@ -703,50 +705,6 @@ public class ShardMigrationWorker implements Closeable {
             .transitionHistory(sm.history())
             .meta(currentMeta.get())
             .build();
-        UpdateShardMigrationStatusRequest request = new UpdateShardMigrationStatusRequest(
-            new UpdateShardMigrationStatusBody(migrationId, shardId, progress)
-        );
-        return AsyncClientHelper.executeAsync(client, UpdateShardMigrationStatusAction.INSTANCE, request)
-            .thenRun(() -> logger.trace("Phase update {} sent successfully", phase))
-            .<CompletableFuture<Void>>handle((v, ex) -> {
-                if (ex == null) return CompletableFuture.completedFuture(null);
-                logger.warn("Failed to send phase update {} (attempt {})", phase, attempt, ex);
-                // Fail fast for non-retryable errors (batcher closed = coordinator gone)
-                if (isNonRetryable(ex)) {
-                    logger.warn("Non-retryable error sending phase update {} — giving up", phase);
-                    return CompletableFuture.completedFuture(null);
-                }
-                if (attempt < MAX_PHASE_UPDATE_RETRIES) {
-                    long delayMs = PHASE_UPDATE_BASE_DELAY_MS * (1L << Math.min(attempt, 6));
-                    CompletableFuture<Void> retryFuture = new CompletableFuture<>();
-                    AsyncUtils.scheduleDelayed(
-                        threadPool,
-                        delayMs,
-                        () -> sendUpdateToCoordinatorWithRetry(phase, attempt + 1).whenComplete((r, e) -> {
-                            if (e != null) retryFuture.completeExceptionally(e);
-                            else retryFuture.complete(r);
-                        })
-                    );
-                    return retryFuture;
-                }
-                logger.error("Exhausted retries sending phase update {} after {} attempts", phase, attempt);
-                return CompletableFuture.failedFuture(
-                    new RuntimeException("Failed to send phase update " + phase + " after " + attempt + " attempts", ex)
-                );
-            })
-            .thenCompose(f -> f);
-    }
-
-    // ---- Progress persistence ----
-
-    private static boolean isNonRetryable(Throwable ex) {
-        Throwable cause = ex;
-        while (cause != null) {
-            String msg = cause.getMessage();
-            if (msg != null && msg.contains("Batcher closed")) return true;
-            cause = cause.getCause();
-        }
-        return false;
     }
 
 }

@@ -177,6 +177,18 @@ public class MigrationRequestOptionsTests extends OpenSearchTestCase {
         assertTrue(ex.getMessage().contains("max_convergence_rounds_per_shard"));
     }
 
+    public void testValidateRejectsTargetReadyTimeoutBelowClusterMinimum() {
+        MigrationRequestOptions opts = new MigrationRequestOptions().setTargetReadyTimeoutSeconds(59);
+        ActionRequestValidationException ex = opts.validate();
+        assertNotNull(ex);
+        assertTrue(ex.getMessage().contains("target_ready_timeout_seconds"));
+    }
+
+    public void testValidateAcceptsMinimumTargetReadyTimeout() {
+        MigrationRequestOptions opts = new MigrationRequestOptions().setTargetReadyTimeoutSeconds(60);
+        assertNull(opts.validate());
+    }
+
     public void testValidateAcceptsNulls() {
         MigrationRequestOptions opts = new MigrationRequestOptions();
         assertNull("All-null options should pass validation", opts.validate());

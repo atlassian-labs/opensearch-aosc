@@ -6,7 +6,7 @@ AOSC controls migration load with cross-shard permits and bulk write controllers
 
 `aosc.backfill.max_concurrent_per_node` limits how many shard workers on a node may hold a backfill permit at the same time.
 
-- Default: `10`
+- Default: `2`
 - `0` pauses new backfill work.
 - Increasing the setting grants queued workers when capacity is available.
 - Decreasing the setting does not revoke already-held permits.

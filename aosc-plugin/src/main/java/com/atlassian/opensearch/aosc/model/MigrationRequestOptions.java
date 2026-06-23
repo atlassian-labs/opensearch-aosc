@@ -24,6 +24,8 @@ import lombok.experimental.Accessors;
 import org.opensearch.action.ActionRequestValidationException;
 import org.opensearch.action.ValidateActions;
 import org.opensearch.common.settings.ClusterSettings;
+import org.opensearch.common.settings.Setting;
+import org.opensearch.common.settings.Settings;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.index.query.QueryBuilders;
@@ -177,34 +179,19 @@ public class MigrationRequestOptions implements JacksonWriteable, JacksonToXCont
 
     public ActionRequestValidationException validate() {
         ActionRequestValidationException ex = null;
-        if (convergenceThresholdPerShard != null) {
-            if (convergenceThresholdPerShard < AoscSettings.CONVERGENCE_THRESHOLD_MIN
-                || convergenceThresholdPerShard > AoscSettings.CONVERGENCE_THRESHOLD_MAX) {
-                ex = ValidateActions.addValidationError(
-                    "convergence_threshold_per_shard must be between "
-                        + AoscSettings.CONVERGENCE_THRESHOLD_MIN
-                        + " and "
-                        + AoscSettings.CONVERGENCE_THRESHOLD_MAX
-                        + ", got "
-                        + convergenceThresholdPerShard,
-                    ex
-                );
-            }
-        }
-        if (maxConvergenceRoundsPerShard != null) {
-            if (maxConvergenceRoundsPerShard < AoscSettings.MAX_CONVERGENCE_ROUNDS_MIN
-                || maxConvergenceRoundsPerShard > AoscSettings.MAX_CONVERGENCE_ROUNDS_MAX) {
-                ex = ValidateActions.addValidationError(
-                    "max_convergence_rounds_per_shard must be between "
-                        + AoscSettings.MAX_CONVERGENCE_ROUNDS_MIN
-                        + " and "
-                        + AoscSettings.MAX_CONVERGENCE_ROUNDS_MAX
-                        + ", got "
-                        + maxConvergenceRoundsPerShard,
-                    ex
-                );
-            }
-        }
+        ex = validateSettingValue(AoscSettings.CONVERGENCE_THRESHOLD, "convergence_threshold_per_shard", convergenceThresholdPerShard, ex);
+        ex = validateSettingValue(
+            AoscSettings.MAX_CONVERGENCE_ROUNDS,
+            "max_convergence_rounds_per_shard",
+            maxConvergenceRoundsPerShard,
+            ex
+        );
+        ex = validateSettingValue(
+            AoscSettings.TARGET_READY_TIMEOUT,
+            "target_ready_timeout_seconds",
+            targetReadyTimeoutSeconds == null ? null : targetReadyTimeoutSeconds + "s",
+            ex
+        );
         if (docCountTolerance != null && docCountTolerance < 0) {
             ex = ValidateActions.addValidationError("doc_count_tolerance must be >= 0, got " + docCountTolerance, ex);
         }
@@ -219,5 +206,22 @@ public class MigrationRequestOptions implements JacksonWriteable, JacksonToXCont
             }
         }
         return ex;
+    }
+
+    private static ActionRequestValidationException validateSettingValue(
+        Setting<?> setting,
+        String fieldName,
+        Object value,
+        ActionRequestValidationException ex
+    ) {
+        if (value == null) {
+            return ex;
+        }
+        try {
+            setting.get(Settings.builder().put(setting.getKey(), value.toString()).build());
+            return ex;
+        } catch (IllegalArgumentException e) {
+            return ValidateActions.addValidationError(fieldName + " is invalid: " + e.getMessage(), ex);
+        }
     }
 }

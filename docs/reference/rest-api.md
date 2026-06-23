@@ -33,7 +33,7 @@ POST /_plugins/_aosc/{index}/_start
 
 | Field | Default | Description |
 |-------|---------|-------------|
-| `convergence_threshold_per_shard` | cluster default, currently `5000` | Remaining ops threshold before a shard is considered converged. |
+| `convergence_threshold_per_shard` | cluster default, currently `500` | Remaining ops threshold before a shard is considered converged. |
 | `max_convergence_rounds_per_shard` | cluster default, currently `1000` | Replay/convergence round limit. |
 | `doc_count_tolerance` | `0` | Accepted source/target document count difference at cutover. |
 | `validation_query` | unset | Query DSL used to filter source and target counts during validation. |

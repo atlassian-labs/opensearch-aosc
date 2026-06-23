@@ -33,41 +33,22 @@ import java.util.Map;
  */
 public final class AoscSettings {
 
-    // ---- Batch size constants (used by MigrationRequestOptions validation) ----
-
-    public static final int BACKFILL_BATCH_SIZE_MIN = 1;
-    public static final int BACKFILL_BATCH_SIZE_MAX = 50_000;
-    public static final int REPLAY_BATCH_SIZE_MIN = 1;
-    public static final int REPLAY_BATCH_SIZE_MAX = 50_000;
-
     // ---- Non-controller settings (convergence, liveness, sharding) ----
-
-    public static final int CONVERGENCE_THRESHOLD_DEFAULT = 5000;
-    public static final int CONVERGENCE_THRESHOLD_MIN = 0;
-    public static final int CONVERGENCE_THRESHOLD_MAX = 1_000_000;
-
-    public static final int MAX_CONVERGENCE_ROUNDS_DEFAULT = 1000;
-    public static final int MAX_CONVERGENCE_ROUNDS_MIN = 1;
-    public static final int MAX_CONVERGENCE_ROUNDS_MAX = 100_000;
-
-    public static final int MAX_CONCURRENT_PER_NODE_DEFAULT = 10;
-    public static final int MAX_CONCURRENT_PER_NODE_MIN = 0;
-    public static final int MAX_CONCURRENT_PER_NODE_MAX = 1000;
 
     public static final Setting<Integer> CONVERGENCE_THRESHOLD = Setting.intSetting(
         "aosc.defaults.convergence_threshold",
-        CONVERGENCE_THRESHOLD_DEFAULT,
-        CONVERGENCE_THRESHOLD_MIN,
-        CONVERGENCE_THRESHOLD_MAX,
+        500,
+        0,
+        1_000_000,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
 
     public static final Setting<Integer> MAX_CONVERGENCE_ROUNDS = Setting.intSetting(
         "aosc.defaults.max_convergence_rounds",
-        MAX_CONVERGENCE_ROUNDS_DEFAULT,
-        MAX_CONVERGENCE_ROUNDS_MIN,
-        MAX_CONVERGENCE_ROUNDS_MAX,
+        1000,
+        1,
+        100_000,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
@@ -102,14 +83,15 @@ public final class AoscSettings {
      */
     public static final Setting<Integer> MAX_CONCURRENT_PER_NODE = Setting.intSetting(
         "aosc.backfill.max_concurrent_per_node",
-        MAX_CONCURRENT_PER_NODE_DEFAULT,
-        MAX_CONCURRENT_PER_NODE_MIN,
-        MAX_CONCURRENT_PER_NODE_MAX,
+        2,
+        0,
+        1000,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
 
-    public static final String TRANSIENT_TARGET_SETTINGS_DEFAULT = "{\"index.number_of_replicas\":\"0\",\"index.refresh_interval\":\"-1\"}";
+    private static final String TRANSIENT_TARGET_SETTINGS_DEFAULT =
+        "{\"index.number_of_replicas\":\"0\",\"index.refresh_interval\":\"-1\"}";
 
     public static final Setting<String> TRANSIENT_TARGET_SETTINGS = Setting.simpleString(
         "aosc.defaults.transient_target_settings",
@@ -119,12 +101,10 @@ public final class AoscSettings {
         Setting.Property.NodeScope
     );
 
-    public static final boolean REMOVE_SOURCE_WRITE_BLOCK_ON_SUCCESS_DEFAULT = false;
-
     /** Cluster-wide default for whether to remove the source index write-block after a successful migration. */
     public static final Setting<Boolean> REMOVE_SOURCE_WRITE_BLOCK_ON_SUCCESS = Setting.boolSetting(
         "aosc.defaults.remove_source_write_block_on_success",
-        REMOVE_SOURCE_WRITE_BLOCK_ON_SUCCESS_DEFAULT,
+        false,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
@@ -142,7 +122,7 @@ public final class AoscSettings {
 
     public static final Setting<String> BACKFILL_CONTROLLER_TYPE = Setting.simpleString(
         "aosc.backfill.controller.type",
-        "fixed",
+        "adaptive_batch",
         AoscSettings::validateControllerType,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
@@ -150,7 +130,7 @@ public final class AoscSettings {
 
     public static final Setting<String> REPLAY_CONTROLLER_TYPE = Setting.simpleString(
         "aosc.replay.controller.type",
-        "fixed",
+        "adaptive_batch",
         AoscSettings::validateReplayControllerType,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
@@ -218,9 +198,9 @@ public final class AoscSettings {
 
     public static final Setting<Integer> BACKFILL_READ_PAGE_SIZE = Setting.intSetting(
         "aosc.backfill.read.page_size",
-        5000,
-        BACKFILL_BATCH_SIZE_MIN,
-        BACKFILL_BATCH_SIZE_MAX,
+        1000,
+        1,
+        50_000,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
@@ -229,9 +209,9 @@ public final class AoscSettings {
 
     public static final Setting<Integer> BACKFILL_FIXED_BATCH_SIZE = Setting.intSetting(
         "aosc.backfill.controller.batch.size",
-        5000,
-        BACKFILL_BATCH_SIZE_MIN,
-        BACKFILL_BATCH_SIZE_MAX,
+        500,
+        1,
+        50_000,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
@@ -247,9 +227,9 @@ public final class AoscSettings {
 
     public static final Setting<Integer> REPLAY_FIXED_BATCH_SIZE = Setting.intSetting(
         "aosc.replay.controller.batch.size",
-        5000,
-        REPLAY_BATCH_SIZE_MIN,
-        REPLAY_BATCH_SIZE_MAX,
+        500,
+        1,
+        50_000,
         Setting.Property.Dynamic,
         Setting.Property.NodeScope
     );
@@ -267,7 +247,7 @@ public final class AoscSettings {
 
     public static final Setting<Integer> BACKFILL_BATCH_MAX_DOCS = Setting.intSetting(
         "aosc.backfill.controller.batch.max_docs",
-        1000,
+        500,
         1,
         50_000,
         Setting.Property.Dynamic,
@@ -341,7 +321,7 @@ public final class AoscSettings {
 
     public static final Setting<Integer> REPLAY_BATCH_MAX_DOCS = Setting.intSetting(
         "aosc.replay.controller.batch.max_docs",
-        1000,
+        500,
         1,
         50_000,
         Setting.Property.Dynamic,

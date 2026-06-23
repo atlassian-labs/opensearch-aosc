@@ -5,9 +5,9 @@ pageClass: aosc-wide-page
 
 # Architecture Overview
 
-AOSC separates migration orchestration from shard-local data movement.
+AOSC separates migration orchestration from shard-local data movement. The coordinator owns migration-level decisions, while data-node shard workers do the backfill and replay work next to the source primaries.
 
-## Architecture Diagram
+## System Architecture
 
 ![](aosc-architecture.drawio)
 
@@ -22,21 +22,29 @@ AOSC separates migration orchestration from shard-local data movement.
 | `.aosc-migrations` | Stores migration documents and detailed progress snapshots. |
 | Cluster state | Carries active coordinator and shard phase state. |
 
-## Data Flow
+## Coordination and Data Flow
 
-```mermaid
-graph LR
-    Source[Source index] -->|Backfill docs| Worker[Shard worker]
-    Source -->|Operation history| Worker
-    Worker -->|Bulk index/delete| Target[Target index]
-    Worker -->|Shard progress| State[Cluster state]
-    Coord[Coordinator] -->|Phase changes| State
-    Coord -->|Alias swap| Alias[Index alias]
-```
+This view expands the control-plane mechanics: how the coordinator writes migration state, how shard services discover work, and how shard workers read from source primaries and write to the target index.
+
+![AOSC coordination and state management: the cluster-manager coordinator writes migration phase state, data-node shard services listen for shard work, shard workers read source primaries, write to the target through bulk APIs, and report heartbeat and shard phase updates back to the coordinator.](coordination.drawio)
 
 Backfill reads source documents, applies the configured transform, and indexes target documents with the same ID and routing when routing is present.
 
 Replay reads source operation history through OpenSearch shard APIs. Index/create operations are transformed and indexed into the target. Delete operations are applied to the target according to the detected routing mode.
+
+## Migration Lifecycle
+
+This view is temporal rather than structural. It shows the successful path from starting a migration through the final replay, validation, and alias swap.
+
+![AOSC migration lifecycle: acquire a retention lease, backfill with EngineSearcher, replay changes until converged, write-block the source, do final replay, verify document counts, swap the alias, and complete the migration.](lifecycle.drawio)
+
+1. `INITIALIZING`: create the migration record and prepare workers.
+2. `ACTIVE`: workers backfill and replay until converged.
+3. `PREPARING_TARGET`: restore target settings and wait for readiness.
+4. `CUTTING_OVER`: apply source write block and flush source.
+5. `CATCHING_UP`: workers replay final operations.
+6. `COMPLETING`: validate, swap alias, remove source write block if configured, and clean up.
+7. Terminal phase: `COMPLETED`, `CANCELLED`, or `FAILED`.
 
 ## Start Preconditions
 
@@ -50,16 +58,6 @@ Before accepting a migration, AOSC validates that:
 - The transform and validation query are valid enough to start.
 
 AOSC does not create the target index.
-
-## Migration Lifecycle
-
-1. `INITIALIZING`: create the migration record and prepare workers.
-2. `ACTIVE`: workers backfill and replay until converged.
-3. `PREPARING_TARGET`: restore target settings and wait for readiness.
-4. `CUTTING_OVER`: apply source write block and flush source.
-5. `CATCHING_UP`: workers replay final operations.
-6. `COMPLETING`: validate, swap alias, remove source write block if configured, and clean up.
-7. Terminal phase: `COMPLETED`, `CANCELLED`, or `FAILED`.
 
 ## Failure Model
 

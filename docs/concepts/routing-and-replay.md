@@ -45,12 +45,92 @@ AOSC detects a routing mode at migration start from the source and target index 
 | Source to target shards | Mode | Delete replay behavior | Custom-routed deletes |
 |-------------------------|------|------------------------|-----------------------|
 | `N -> N` | `SAME_SHARD` | Deletes are sent to the corresponding target shard using a synthetic routing value for that shard. | Safe. |
-| `N -> kN`, where `k` is a power of 2 | `SPLIT_SHARD` | Deletes fan out to the `k` target shards that can contain documents from the source shard. | Safe. Extra fan-out deletes are no-ops. |
+| `N -> kN`, where `k` is a power of 2 and routing metadata is compatible | `SPLIT_SHARD` | Deletes fan out to the `k` target shards that can contain documents from the source shard. | Safe. Extra fan-out deletes are no-ops. |
 | Shrink, non-multiple change, or non-power-of-2 expansion | `BULK_API` | Deletes are sent without routing and are routed by `_id`. | Risky for custom-routed documents. Requires explicit consent. |
 
 The `SPLIT_SHARD` case is restricted to power-of-2 expansion factors because that is the topology where OpenSearch's routing math keeps a bounded, non-overlapping target shard set for each source shard. A non-power-of-2 expansion can scatter documents from one source shard across target shards that overlap with other source shards.
 
+For source indices with more than one primary shard, `SPLIT_SHARD` also requires the source and target to have the same `index.number_of_routing_shards`. AOSC validates this at `_start` time. If the values differ, recreate the target index with the source index's `index.number_of_routing_shards` before starting the migration. The single-source-shard case is different: a delete from shard `0` fans out to every target shard, so matching routing-shard space is not required.
+
 Current implementation detail: AOSC computes synthetic routing values for the target index. In `SAME_SHARD`, a delete from source shard `S` is sent with a synthetic routing value that routes to target shard `S`. In `SPLIT_SHARD`, the delete is sent once to each target shard in the source shard's target group. Extra fan-out deletes are expected no-ops.
+
+## Deep Dive: Why Power-of-2 Split Fan-Out Is Safe
+
+OpenSearch does not route documents with `hash % number_of_shards`. To keep split indices deterministic, routing uses a larger hash space fixed at index creation time:
+
+$$
+\begin{aligned}
+routingValue &= \text{explicit } \_routing \text{, or } \_id \text{ when routing is absent} \\
+R &= index.number\_of\_routing\_shards \\
+f &= \frac{R}{index.number\_of\_shards} \\
+b &= \operatorname{floorMod}(\operatorname{murmur3}(routingValue), R) \\
+shard &= \left\lfloor \frac{b}{f} \right\rfloor
+\end{aligned}
+$$
+
+`b` is the routing bucket in `[0, R)`, and `f` is the routing factor. This description assumes the default `routing_partition_size = 1`, so there is no partition offset.
+
+Now split a source index with `S` primary shards into a target index with `T = k * S` primary shards, where `k` is a power of two. For AOSC's split delete fan-out to be safe, the source and target must use the same `R`.
+
+The routing factors are:
+
+$$
+\begin{aligned}
+f_s &= \frac{R}{S} \\
+f_t &= \frac{R}{T} = \frac{R}{kS} = \frac{f_s}{k}
+\end{aligned}
+$$
+
+If a document belongs to source shard `s`, its routing bucket is inside that source shard's slice of the hash space:
+
+$$
+b \in [s f_s, (s + 1) f_s)
+$$
+
+Since `f_s = k * f_t`, dividing the same bucket by the smaller target routing factor maps the document into:
+
+$$
+t = \left\lfloor \frac{b}{f_t} \right\rfloor \in [s k, (s + 1) k)
+$$
+
+So every document copied from source shard `s` can land only in this contiguous target shard group:
+
+$$
+\{s k,\; s k + 1,\; \ldots,\; s k + (k - 1)\}
+$$
+
+That is why a routing-free delete from source shard `s` can be fanned out to those `k` target shards. The document is present on exactly one of them; the other `k - 1` deletes are no-ops.
+
+For example, in a `3 -> 12` migration, `k = 4`. A delete from source shard `1` fans out to target shards:
+
+$$
+\{1 \cdot 4,\; 1 \cdot 4 + 1,\; 1 \cdot 4 + 2,\; 1 \cdot 4 + 3\} = \{4,\; 5,\; 6,\; 7\}
+$$
+
+The shard counts `3` and `12` do not need to be powers of two. The split factor `k` must be a power of two, and for source indices with more than one primary shard, `index.number_of_routing_shards` must match between source and target.
+
+![Power-of-two split fan-out: source shard 1 in a 3-shard source maps to target shards 4, 5, 6, and 7 in a 12-shard target. A routing-less delete from source shard 1 fans out to those four target shards.](routing-split.drawio)
+
+## Addressing a Specific Target Shard
+
+OpenSearch delete requests route by key, not by shard number. AOSC cannot send "delete document `D` from shard `6`" directly through the public delete API.
+
+To address a specific target shard, AOSC precomputes one synthetic routing value per target shard. It tries candidate routing strings and passes them through OpenSearch's own `OperationRouting.generateShardId(...)` until it has a key that maps to each target shard.
+
+When AOSC needs to send a delete to target shard `j`, it sends the delete with the synthetic routing key for shard `j`. The routing key selects the shard; the delete still matches the document by `_id`.
+
+Example target settings for a `3 -> 12` split-style migration where the source index's actual `index.number_of_routing_shards` is `12`:
+
+```json
+{
+  "settings": {
+    "index.number_of_shards": 12,
+    "index.number_of_routing_shards": 12
+  }
+}
+```
+
+Use the source index's actual `index.number_of_routing_shards` value, not the source shard count. This setting is fixed at index creation time.
 
 ## Why `BULK_API` Can Lose Deletes
 

@@ -82,6 +82,8 @@ public final class IndexPreconditionsValidator implements MigrationStartValidato
             errors.add("alias [" + alias + "] conflicts with an existing concrete index of the same name");
         }
 
+        validateSplitShardRoutingPreconditions(sourceMeta, targetMeta, errors);
+
         try {
             SyntheticRoutingHelper.computeSyntheticRoutings(targetMeta);
         } catch (IllegalStateException e) {
@@ -89,5 +91,43 @@ public final class IndexPreconditionsValidator implements MigrationStartValidato
         }
 
         return errors;
+    }
+
+    private static void validateSplitShardRoutingPreconditions(IndexMetadata sourceMeta, IndexMetadata targetMeta, List<String> errors) {
+        int sourceShards = sourceMeta.getNumberOfShards();
+        int targetShards = targetMeta.getNumberOfShards();
+        if (sourceShards == 1 || targetShards <= sourceShards || targetShards % sourceShards != 0) {
+            return;
+        }
+
+        int factor = targetShards / sourceShards;
+        if (!isPowerOfTwo(factor)) {
+            return;
+        }
+
+        int sourceRoutingShards = sourceMeta.getRoutingNumShards();
+        int targetRoutingShards = targetMeta.getRoutingNumShards();
+        if (sourceRoutingShards != targetRoutingShards) {
+            errors.add(
+                "source index ["
+                    + sourceMeta.getIndex().getName()
+                    + "] and target index ["
+                    + targetMeta.getIndex().getName()
+                    + "] have incompatible [index.number_of_routing_shards] for split-shard replay (source="
+                    + sourceRoutingShards
+                    + ", target="
+                    + targetRoutingShards
+                    + ", shards="
+                    + sourceShards
+                    + "->"
+                    + targetShards
+                    + "); recreate the target index with index.number_of_routing_shards="
+                    + sourceRoutingShards
+            );
+        }
+    }
+
+    private static boolean isPowerOfTwo(int value) {
+        return value > 0 && (value & (value - 1)) == 0;
     }
 }

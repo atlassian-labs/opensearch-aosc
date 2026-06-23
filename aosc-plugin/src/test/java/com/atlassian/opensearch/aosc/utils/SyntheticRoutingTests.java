@@ -107,6 +107,12 @@ public class SyntheticRoutingTests extends OpenSearchTestCase {
         assertEquals(ShardRoutingMode.SPLIT_SHARD, SyntheticRoutingHelper.detectRoutingMode(src, tgt));
     }
 
+    public void testDetectSplitShard3to12() {
+        IndexMetadata src = buildIndexMetadata("src", 3);
+        IndexMetadata tgt = buildIndexMetadata("tgt", 12);
+        assertEquals(ShardRoutingMode.SPLIT_SHARD, SyntheticRoutingHelper.detectRoutingMode(src, tgt));
+    }
+
     public void testDetectBulkApiNonMultiple() {
         // 2→3: non-multiple, must use BULK_API
         IndexMetadata src = buildIndexMetadata("src", 2);

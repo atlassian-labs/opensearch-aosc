@@ -27,6 +27,7 @@ import org.opensearch.core.index.shard.ShardId;
 import org.opensearch.test.OpenSearchTestCase;
 
 import java.util.Collections;
+import java.util.List;
 
 import static org.mockito.Mockito.mock;
 
@@ -38,14 +39,21 @@ import static org.mockito.Mockito.mock;
 public class IndexPreconditionsValidatorTests extends OpenSearchTestCase {
 
     private static IndexMetadata buildMeta(String name) {
-        return IndexMetadata.builder(name)
+        return buildMeta(name, 1, null);
+    }
+
+    private static IndexMetadata buildMeta(String name, int shards, Integer routingNumShards) {
+        IndexMetadata.Builder builder = IndexMetadata.builder(name)
             .settings(
                 Settings.builder()
                     .put(IndexMetadata.SETTING_VERSION_CREATED, Version.CURRENT)
-                    .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, 1)
+                    .put(IndexMetadata.SETTING_NUMBER_OF_SHARDS, shards)
                     .put(IndexMetadata.SETTING_NUMBER_OF_REPLICAS, 0)
-            )
-            .build();
+            );
+        if (routingNumShards != null) {
+            builder.setRoutingNumShards(routingNumShards);
+        }
+        return builder.build();
     }
 
     private static IndexRoutingTable activeRouting(IndexMetadata meta) {
@@ -91,13 +99,17 @@ public class IndexPreconditionsValidatorTests extends OpenSearchTestCase {
         );
     }
 
-    public void testAllHealthyPasses() {
-        IndexMetadata src = buildMeta("src");
-        IndexMetadata tgt = buildMeta("tgt");
-        ClusterState state = ClusterState.builder(ClusterState.EMPTY_STATE)
+    private static ClusterState healthyState(IndexMetadata src, IndexMetadata tgt) {
+        return ClusterState.builder(ClusterState.EMPTY_STATE)
             .metadata(Metadata.builder().put(src, false).put(tgt, false).build())
             .routingTable(RoutingTable.builder().add(activeRouting(src)).add(activeRouting(tgt)).build())
             .build();
+    }
+
+    public void testAllHealthyPasses() {
+        IndexMetadata src = buildMeta("src");
+        IndexMetadata tgt = buildMeta("tgt");
+        ClusterState state = healthyState(src, tgt);
         new IndexPreconditionsValidator().validate(ctx(state, src, tgt, "my-alias"));
     }
 
@@ -114,5 +126,29 @@ public class IndexPreconditionsValidatorTests extends OpenSearchTestCase {
         );
         assertTrue(ex.getMessage(), ex.getMessage().startsWith("Migration precondition check failed"));
         assertTrue(ex.getMessage(), ex.getMessage().contains("source index [src] has unready primaries"));
+    }
+
+    public void testRejectsSplitShardRoutingNumShardsMismatch() {
+        IndexMetadata src = buildMeta("src", 3, 3);
+        IndexMetadata tgt = buildMeta("tgt", 12, 12);
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        assertEquals(1, errors.size());
+        assertTrue(errors.get(0), errors.get(0).contains("incompatible [index.number_of_routing_shards]"));
+        assertTrue(errors.get(0), errors.get(0).contains("source=3, target=12"));
+        assertTrue(errors.get(0), errors.get(0).contains("recreate the target index"));
+    }
+
+    public void testAllowsSplitShardRoutingNumShardsMatch() {
+        IndexMetadata src = buildMeta("src", 3, 12);
+        IndexMetadata tgt = buildMeta("tgt", 12, 12);
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        assertTrue("Expected compatible split routing metadata to pass, got: " + errors, errors.isEmpty());
+    }
+
+    public void testAllowsSingleSourceShardSplitWithDifferentRoutingNumShards() {
+        IndexMetadata src = buildMeta("src", 1, 1);
+        IndexMetadata tgt = buildMeta("tgt", 4, 4);
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        assertTrue("Single source shard fan-out should not require matching routing shard space, got: " + errors, errors.isEmpty());
     }
 }

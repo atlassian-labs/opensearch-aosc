@@ -9,10 +9,19 @@ Shard count changes are safest when AOSC can keep source-shard ownership unambig
 | Source to target shards | Mode | Guidance |
 |-------------------------|------|----------|
 | `N -> N` | `SAME_SHARD` | Safest path for custom-routed indices. |
-| `N -> kN`, where `k` is a power of 2 | `SPLIT_SHARD` | Supported for custom routing; delete replay fans out within the target shard group. |
+| `N -> kN`, where `k` is a power of 2 | `SPLIT_SHARD` | Supported for custom routing when routing metadata is compatible; delete replay fans out within the target shard group. |
 | Shrink, non-multiple change, or non-power-of-2 expansion | `BULK_API` | Requires `accept_data_loss_if_custom_routing_is_used`; custom-routed deletes can leave stale target documents. |
 
-Check the source index settings and application write path before proceeding. If the source uses tenant routing, container replication, or any client-supplied `_routing`, read [Routing and Replay](../concepts/routing-and-replay) before choosing the target shard count.
+Check the source index settings and application write path before proceeding. If the source uses tenant routing, container replication, or any client-supplied `_routing`, read [Routing and Replay](../concepts/routing-and-replay) before choosing the target shard count. That page includes the split fan-out proof and the reason `index.number_of_routing_shards` matters.
+
+For split-style migrations from a source index with more than one primary shard, check the source routing-shard value:
+
+```bash
+curl -s 'http://localhost:9200/my-index-v1/_settings' \
+  | jq -r '."my-index-v1".settings.index.number_of_routing_shards'
+```
+
+When creating the target, use that same value for `index.number_of_routing_shards`. This setting is fixed at index creation time.
 
 ## 2. Create the Target Index
 
@@ -33,6 +42,17 @@ curl -X PUT 'http://localhost:9200/my-index-v2' \
       }
     }
   }'
+```
+
+If the source has more than one primary shard and you are doing a power-of-two expansion, replace the example `number_of_routing_shards` with the source index's actual value. For a `3 -> 12` migration where the source has `index.number_of_routing_shards=12`, the target should use:
+
+```json
+{
+  "settings": {
+    "index.number_of_shards": 12,
+    "index.number_of_routing_shards": 12
+  }
+}
 ```
 
 ## 3. Start the Migration

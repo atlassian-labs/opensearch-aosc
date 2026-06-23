@@ -182,6 +182,7 @@ export default defineConfig({
   lastUpdated: true,
   ignoreDeadLinks: "localhostLinks",
   markdown: {
+    math: true,
     config(md) {
       drawioMarkdownPlugin(md);
     },

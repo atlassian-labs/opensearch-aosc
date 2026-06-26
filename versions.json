@@ -8,5 +8,10 @@
     "version": "0.1.0-os2",
     "title": "0.1.0-os2",
     "aliases": []
+  },
+  {
+    "version": "0.1.0-os3",
+    "title": "0.1.0-os3",
+    "aliases": []
   }
 ]

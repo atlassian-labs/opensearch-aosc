@@ -41,11 +41,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pages: write
-      id-token: write
-    environment:
-      name: github-pages
-      url: ${{ steps.deployment.outputs.page_url }}
     concurrency:
       group: docs-deploy
       cancel-in-progress: false
@@ -61,16 +56,3 @@ jobs:
         run: npm ci
       - name: Deploy develop docs
         run: scripts/deploy-docs-version.sh --version develop --set-default
-      - uses: actions/configure-pages@v6
-      - id: pages-source
-        name: Prepare Pages artifact
-        run: |
-          pages_dir="$(mktemp -d)"
-          git fetch origin gh-pages
-          git worktree add "${pages_dir}" origin/gh-pages
-          echo "pages_dir=${pages_dir}" >> "${GITHUB_OUTPUT}"
-      - uses: actions/upload-pages-artifact@v5
-        with:
-          path: ${{ steps.pages-source.outputs.pages_dir }}
-      - id: deployment
-        uses: actions/deploy-pages@v5

@@ -2,7 +2,7 @@
 set -euo pipefail
 
 ROOT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-LINE="${1:-os2}"
+LINE="${1:-os3}"
 FORMAT="${2:---summary}"
 
 # shellcheck disable=SC1090

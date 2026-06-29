@@ -3,9 +3,9 @@
 AOSC releases have two version axes:
 
 - **AOSC version**: the plugin project version, such as `0.1.0`.
-- **OpenSearch compatibility line**: the OpenSearch major/minor line the ZIP was built against, such as `2.19`.
+- **OpenSearch compatibility line**: the OpenSearch major/minor line the ZIP was built against, such as `3.6`.
 
-The plugin descriptor uses a patch-compatible semver range for the selected OpenSearch minor. For example, a ZIP built with OpenSearch `2.19.0` is intended for OpenSearch `2.19.x` unless a release note says otherwise.
+The plugin descriptor uses a patch-compatible semver range for the selected OpenSearch minor. For example, a ZIP built with OpenSearch `3.6.0` is intended for OpenSearch `3.6.x` unless a release note says otherwise.
 
 ## Source of Truth
 
@@ -28,14 +28,15 @@ release/os2.properties
 release/os3.properties
 ```
 
-The current OpenSearch 2.x line is:
+The current OpenSearch 3.x line is:
 
 ```properties
-line=os2
-branch=releases/2.x
-primary_version=2.19.0
-build_versions=2.15.0,2.17.0,2.19.0
-test_versions=2.15.0,2.17.0,2.17.1,2.19.0,2.19.3
+line=os3
+branch=releases/3.x
+primary_version=3.6.0
+build_versions=3.1.0,3.3.0,3.5.0,3.6.0
+test_versions=3.1.0,3.3.0,3.5.0,3.6.0
+java_version=21
 ```
 
 Release tags, asset names, documentation versions, GitHub Actions matrices, and release branch checks are derived from these files. Do not type release versions directly into the GitHub workflow.
@@ -48,9 +49,9 @@ Release branches are organized by OpenSearch major line:
 | --- | --- |
 | `develop` | Active development. |
 | `releases/2.x` | OpenSearch 2.x maintenance and releases. |
-| `releases/3.x` | OpenSearch 3.x maintenance and releases once supported. |
+| `releases/3.x` | OpenSearch 3.x maintenance and releases. |
 
-GitHub release publishing must run from the branch declared in the matching `release/<line>.properties` file. For example, the OpenSearch 2.x release publisher should only publish plugin artifacts from `releases/2.x`.
+GitHub release publishing must run from the branch declared in the matching `release/<line>.properties` file. For example, the OpenSearch 3.x release publisher should only publish plugin artifacts from `releases/3.x`.
 
 Pushing to a release branch runs validation only. Publishing is manual: run the GitHub `Publish Release` workflow from the release branch after validation is green.
 
@@ -73,7 +74,7 @@ Release branches use `-SNAPSHOT` as the pre-release marker for the next intended
 
 ```text
 develop:      0.0.0-dev
-releases/2.x: 0.1.0-SNAPSHOT
+releases/3.x: 0.1.0-SNAPSHOT
 prepare:      human commits 0.1.0-SNAPSHOT -> 0.1.0
 publish:      workflow tags 0.1.0, creates draft GitHub release, deploys docs
 next work:    human commits 0.1.0 -> 0.1.1-SNAPSHOT, 0.2.0-SNAPSHOT, or 1.0.0-SNAPSHOT
@@ -87,7 +88,7 @@ Manual release flow:
 2. Set `aosc.version=X.Y.Z-SNAPSHOT` while preparing and validating the release branch.
 3. Commit `aosc.version=X.Y.Z` when the branch is ready to release.
 4. Run `Publish Release` from the release branch.
-5. The workflow validates the current branch state, runs full CI, creates tag `aosc-X.Y.Z-os2`, builds release ZIPs, creates a draft GitHub release, and publishes docs.
+5. The workflow validates the current branch state, runs full CI, creates a tag such as `aosc-X.Y.Z-os3`, builds release ZIPs, creates a draft GitHub release, and publishes docs.
 6. After release, commit the next `-SNAPSHOT` version to the release branch.
 
 The workflow rejects `develop` versions such as `0.0.0-dev` and release-candidate versions such as `0.1.0-SNAPSHOT`; releases must be made from `releases/*` branches using exact `X.Y.Z` versions.
@@ -108,10 +109,11 @@ Each release line declares two compatibility lists:
 | --- | --- |
 | `build_versions` | OpenSearch minors that receive release ZIPs. |
 | `test_versions` | Exact OpenSearch patch versions covered by CI. |
+| `java_version` | JDK version used by CI and release builds for that OpenSearch line. |
 
-For OpenSearch 2.x, AOSC currently builds release ZIPs for `2.15`, `2.17`, and `2.19`, and runs CI against `2.15.0`, `2.17.0`, `2.17.1`, `2.19.0`, and `2.19.3`.
+For OpenSearch 3.x, AOSC currently builds release ZIPs for `3.1`, `3.3`, `3.5`, and `3.6`, and runs CI against `3.1.0`, `3.3.0`, `3.5.0`, and `3.6.0`.
 
-The ZIP name intentionally uses the OpenSearch minor, for example `opensearch-aosc-0.1.0-opensearch-2.19.zip`. The plugin descriptor uses a patch-compatible semver range for that minor, so the `2.19` ZIP is intended for the `2.19.x` line unless the release notes call out an exception.
+The ZIP name intentionally uses the OpenSearch minor, for example `opensearch-aosc-0.1.0-opensearch-3.6.zip`. The plugin descriptor uses a patch-compatible semver range for that minor, so the `3.6` ZIP is intended for the `3.6.x` line unless the release notes call out an exception.
 
 ## GitHub Actions Policy
 
@@ -153,12 +155,13 @@ Each GitHub release should include:
 - an SBOM when available
 - artifact provenance or attestation when available
 
-Example OpenSearch 2.x assets:
+Example OpenSearch 3.x assets:
 
 ```text
-opensearch-aosc-0.1.0-opensearch-2.15.zip
-opensearch-aosc-0.1.0-opensearch-2.17.zip
-opensearch-aosc-0.1.0-opensearch-2.19.zip
+opensearch-aosc-0.1.0-opensearch-3.1.zip
+opensearch-aosc-0.1.0-opensearch-3.3.zip
+opensearch-aosc-0.1.0-opensearch-3.5.zip
+opensearch-aosc-0.1.0-opensearch-3.6.zip
 SHA256SUMS
 ```
 
@@ -167,13 +170,13 @@ SHA256SUMS
 Build a ZIP for one OpenSearch version:
 
 ```bash
-./gradlew :aosc-plugin:bundlePlugin -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:bundlePlugin -Dopensearch.version=3.6.0
 ```
 
-Build and rename all currently supported OpenSearch 2.x ZIPs:
+Build and rename all currently supported OpenSearch 3.x ZIPs:
 
 ```bash
-./scripts/build-release-zips.sh os2
+./scripts/build-release-zips.sh os3
 ```
 
 The script writes release assets to `build/release/`.
@@ -181,7 +184,7 @@ The script writes release assets to `build/release/`.
 Inspect the release metadata with:
 
 ```bash
-./scripts/release-metadata.sh os2
+./scripts/release-metadata.sh os3
 ```
 
 ## Documentation Site
@@ -198,9 +201,9 @@ The current docs layout is:
 | --- | --- |
 | `develop` | `/develop/` |
 | `releases/2.x` with `aosc.version=0.1.0` | `/0.1.0-os2/` |
-| `releases/3.x` with `aosc.version=0.1.0` | `/0.1.0-os3/` once the branch exists |
+| `releases/3.x` with `aosc.version=0.1.0` | `/0.1.0-os3/` |
 
-Release documentation is versioned by exact AOSC patch version plus OpenSearch major line. For example, `aosc.version=0.1.0` and `line=os2` publish to `/0.1.0-os2/`. A patch release such as `0.1.1` publishes separate documentation at `/0.1.1-os2/`.
+Release documentation is versioned by exact AOSC patch version plus OpenSearch major line. For example, `aosc.version=0.1.0` and `line=os3` publish to `/0.1.0-os3/`. A patch release such as `0.1.1` publishes separate documentation at `/0.1.1-os3/`.
 
 Build the docs locally with:
 

@@ -6,25 +6,22 @@ read `README.md` and `CONTRIBUTING.md` first.
 
 ## OpenSearch API Compatibility
 
-AOSC currently targets OpenSearch 2.x. Keep code compatible with the lowest
-supported 2.x minor in `release/os2.properties`, and do not introduce
-OpenSearch 3.x-only APIs on the 2.x line.
+AOSC on this branch targets OpenSearch 3.x. Keep code compatible with the lowest
+supported 3.x minor in `release/os3.properties`. The OpenSearch 2.x line is
+maintained separately on `releases/2.x`.
 
-Common 2.x imports:
+Common 3.x imports:
 
 ```java
-import org.opensearch.client.Client;
+import org.opensearch.transport.client.Client;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.action.ActionType;
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
 ```
 
-Do not replace these with `org.opensearch.transport.client.Client` on the 2.x
-line.
-
-OpenSearch 2.x plugins use the legacy positional `createComponents` signature,
-not the OpenSearch 3.x single-services-object signature:
+The AOSC OpenSearch 3.x plugin currently uses the positional `createComponents`
+signature exposed by the target OpenSearch versions:
 
 ```java
 @Override
@@ -93,9 +90,9 @@ Use project utilities that schedule through the OpenSearch `ThreadPool`.
 Use targeted validation while developing:
 
 ```bash
-./gradlew :aosc-plugin:fastCheck -Dopensearch.version=2.19.0
-./gradlew :aosc-plugin:yamlRestTest -Dopensearch.version=2.19.0
-./gradlew :aosc-plugin:itTest -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:fastCheck -Dopensearch.version=3.6.0
+./gradlew :aosc-plugin:yamlRestTest -Dopensearch.version=3.6.0
+./gradlew :aosc-plugin:itTest -Dopensearch.version=3.6.0
 mkdocs build --strict
 ```
 
@@ -103,11 +100,11 @@ Use `--no-daemon` for longer integration runs when debugging stale Gradle
 workers:
 
 ```bash
-./gradlew --no-daemon :aosc-plugin:itTest -Dopensearch.version=2.19.0
+./gradlew --no-daemon :aosc-plugin:itTest -Dopensearch.version=3.6.0
 ```
 
 Run broader version matrix checks before release or compatibility-sensitive
-changes. The supported OpenSearch versions are declared in `release/os2.properties`.
+changes. The supported OpenSearch versions are declared in `release/os3.properties`.
 
 ## Documentation
 

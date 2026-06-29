@@ -6,7 +6,7 @@ on:
       os_line:
         description: OpenSearch compatibility line
         required: false
-        default: os2
+        default: os3
         type: string
       include_docs:
         description: Build documentation as part of validation

@@ -6,7 +6,7 @@ on:
       os_line:
         description: OpenSearch compatibility line
         required: true
-        default: os2
+        default: os3
         type: choice
         options:
           - os2

@@ -3,7 +3,7 @@
 All commands require `OPENSEARCH_VERSION` or `-Dopensearch.version`.
 
 ```bash
-export OPENSEARCH_VERSION=2.19.0
+export OPENSEARCH_VERSION=3.6.0
 ```
 
 ## Test Matrix

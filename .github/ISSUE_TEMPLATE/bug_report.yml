@@ -12,14 +12,14 @@ body:
     attributes:
       label: AOSC version
       description: GitHub release tag, commit, or local build version.
-      placeholder: aosc-0.1.0-os2
+      placeholder: aosc-0.1.0-os3
     validations:
       required: true
   - type: input
     id: opensearch-version
     attributes:
       label: OpenSearch version
-      placeholder: 2.19.0
+      placeholder: 3.6.0
     validations:
       required: true
   - type: textarea

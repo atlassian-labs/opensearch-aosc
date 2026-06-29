@@ -8,7 +8,7 @@ The contributing pages in this documentation are source-tree workflow references
 
 | Tool | Minimum | Notes |
 |------|---------|-------|
-| JDK | 17 known working | The Gradle build targets Java 11 bytecode (`sourceCompatibility` and `targetCompatibility` are 11). |
+| JDK | 21 | OpenSearch 3.x plugin builds target Java 21 bytecode. |
 | Git | 2.x | Source control. |
 | Docker | Recent Docker Desktop or Docker Engine | Needed for Docker-backed smoke tests and local clusters. |
 | Docker Compose | v2 plugin or v1 standalone | The Gradle task detects `docker compose` first, then `docker-compose`. |
@@ -21,7 +21,7 @@ The root build requires an OpenSearch version.
 ```bash
 git clone https://github.com/atlassian-labs/opensearch-aosc.git
 cd opensearch-aosc
-./gradlew :aosc-plugin:assemble -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:assemble -Dopensearch.version=3.6.0
 ```
 
 The plugin ZIP is written to `aosc-plugin/build/distributions/`.
@@ -35,16 +35,16 @@ export OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
 The OpenSearch version can be supplied per command:
 
 ```bash
-./gradlew :aosc-plugin:fastCheck -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:fastCheck -Dopensearch.version=3.6.0
 ```
 
 ## IntelliJ IDEA
 
 1. Open the repository root.
-2. Use JDK 17 for Gradle import if available, with project language level 11.
+2. Use JDK 21 for Gradle import, with project language level 21.
 3. Enable annotation processing for Lombok.
 4. Import the formatter profile from `gradle/formatterConfig.xml` if you want IDE formatting to match Spotless.
-5. Add Gradle run configurations with `OPENSEARCH_VERSION=2.19.0` or `-Dopensearch.version=2.19.0`.
+5. Add Gradle run configurations with `OPENSEARCH_VERSION=3.6.0` or `-Dopensearch.version=3.6.0`.
 
 ## Local Docker Cluster
 
@@ -52,14 +52,14 @@ From the repository root:
 
 ```bash
 export OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
-./gradlew :aosc-plugin:dockerUp -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:dockerUp -Dopensearch.version=3.6.0
 curl -s http://localhost:9200/_cluster/health | jq '.'
-./gradlew :aosc-plugin:dockerDown -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:dockerDown -Dopensearch.version=3.6.0
 ```
 
 The compose files live in `aosc-plugin/opensearch-docker/`. Prefer the Gradle tasks above because they build the plugin ZIP, copy it into the Docker context, select Compose v1 or v2, wait for health, and remove volumes on shutdown.
 
-If you debug Compose directly, first run `./gradlew :aosc-plugin:dockerCopyPlugin -Dopensearch.version=2.19.0`, then run Compose from `aosc-plugin/opensearch-docker/` with `OPENSEARCH_VERSION` and `OPENSEARCH_INITIAL_ADMIN_PASSWORD` set.
+If you debug Compose directly, first run `./gradlew :aosc-plugin:dockerCopyPlugin -Dopensearch.version=3.6.0`, then run Compose from `aosc-plugin/opensearch-docker/` with `OPENSEARCH_VERSION` and `OPENSEARCH_INITIAL_ADMIN_PASSWORD` set.
 
 ## Common Setup Issues
 
@@ -68,7 +68,7 @@ If you debug Compose directly, first run `./gradlew :aosc-plugin:dockerCopyPlugi
 | `opensearch.version is required` | Export `OPENSEARCH_VERSION` or pass `-Dopensearch.version`. |
 | `java: command not found` | Install a JDK and make it available on `PATH`. |
 | Docker connection errors | Start Docker Desktop or Docker Engine. |
-| Spotless violations | Run `./gradlew :aosc-plugin:spotlessApply -Dopensearch.version=2.19.0`. |
+| Spotless violations | Run `./gradlew :aosc-plugin:spotlessApply -Dopensearch.version=3.6.0`. |
 | Lombok symbols missing in IDE | Enable annotation processing and reload Gradle. |
 
 ## Repository Layout

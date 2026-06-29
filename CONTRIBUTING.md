@@ -33,7 +33,7 @@ Before sending a pull request:
 Run at least the core checks for the OpenSearch version you changed against:
 
 ```bash
-export OPENSEARCH_VERSION=2.19.0
+export OPENSEARCH_VERSION=3.6.0
 ./gradlew :aosc-plugin:fastCheck
 ./gradlew :aosc-plugin:yamlRestTest
 ./gradlew :aosc-plugin:itTest

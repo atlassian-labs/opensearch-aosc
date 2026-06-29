@@ -21,7 +21,7 @@ body:
     id: opensearch-version
     attributes:
       label: Relevant OpenSearch version or branch
-      placeholder: 2.x, 3.x, 2.19.0
+      placeholder: 3.x, 3.6.0
   - type: textarea
     id: alternatives
     attributes:

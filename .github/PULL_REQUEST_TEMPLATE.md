@@ -13,10 +13,10 @@ Describe the change and why it is needed.
 List the commands you ran, for example:
 
 ```bash
-./gradlew :aosc-plugin:fastCheck -Dopensearch.version=2.19.0
-./gradlew :aosc-plugin:yamlRestTest -Dopensearch.version=2.19.0
-./gradlew :aosc-plugin:itTest -Dopensearch.version=2.19.0
-./gradlew :aosc-plugin:smokeTest2Nodes -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:fastCheck -Dopensearch.version=3.6.0
+./gradlew :aosc-plugin:yamlRestTest -Dopensearch.version=3.6.0
+./gradlew :aosc-plugin:itTest -Dopensearch.version=3.6.0
+./gradlew :aosc-plugin:smokeTest2Nodes -Dopensearch.version=3.6.0
 npm run docs:build
 ```
 

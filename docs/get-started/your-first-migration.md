@@ -10,7 +10,7 @@ This tutorial keeps writes running while AOSC backfills and replays into a targe
 
 ## Prerequisites
 
-- JDK 17 is known working; the plugin source targets Java 11 bytecode.
+- JDK 21; OpenSearch 3.x plugin builds target Java 21 bytecode.
 - Docker and Docker Compose.
 - `curl` and `jq`.
 
@@ -19,7 +19,7 @@ This tutorial keeps writes running while AOSC backfills and replays into a targe
 From the repository root:
 
 ```bash
-./gradlew :aosc-plugin:assemble -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:assemble -Dopensearch.version=3.6.0
 ```
 
 The ZIP is created under `aosc-plugin/build/distributions/`.
@@ -30,7 +30,7 @@ Use the Gradle Docker tasks from the repository root:
 
 ```bash
 export OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
-./gradlew :aosc-plugin:dockerUp -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:dockerUp -Dopensearch.version=3.6.0
 ```
 
 Wait for the cluster to become healthy:
@@ -181,5 +181,5 @@ After success, the old source index (`events-v1`) is write-blocked by default. T
 Shut down the local cluster:
 
 ```bash
-./gradlew :aosc-plugin:dockerDown -Dopensearch.version=2.19.0
+./gradlew :aosc-plugin:dockerDown -Dopensearch.version=3.6.0
 ```

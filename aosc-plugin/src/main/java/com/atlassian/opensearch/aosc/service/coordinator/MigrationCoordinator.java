@@ -450,6 +450,7 @@ class MigrationCoordinator implements Closeable {
             })
             .onFailure(ctx -> {
                 logger.error("Unhandled error in phase {}: {}", ctx.failedInState(), ctx.message(), ctx.cause());
+                failureReason.compareAndSet(null, ctx.cause() != null ? ctx.cause().getMessage() : ctx.message());
                 ctx.sm().transitionTo(CoordinatorPhase.FAILING);
             })
             .build();

@@ -22,8 +22,18 @@ import com.atlassian.opensearch.aosc.utils.AoscLogger;
 
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
 
+import org.apache.lucene.search.TotalHits;
+
 import org.opensearch.action.admin.indices.alias.IndicesAliasesRequest;
+import org.opensearch.action.admin.indices.flush.FlushRequest;
+import org.opensearch.action.admin.indices.flush.FlushResponse;
+import org.opensearch.action.admin.indices.readonly.AddIndexBlockRequest;
+import org.opensearch.action.admin.indices.readonly.AddIndexBlockResponse;
+import org.opensearch.action.admin.indices.refresh.RefreshRequest;
+import org.opensearch.action.admin.indices.refresh.RefreshResponse;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
+import org.opensearch.action.search.SearchRequest;
+import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.ClusterStateUpdateTask;
@@ -33,6 +43,8 @@ import org.opensearch.common.settings.Settings;
 import org.opensearch.common.unit.TimeValue;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.IndexNotFoundException;
+import org.opensearch.search.SearchHit;
+import org.opensearch.search.SearchHits;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.client.AdminClient;
@@ -533,6 +545,119 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             });
             return null;
         }).when(mockIndicesAdmin).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+    }
+
+    // ---- Test: a cutover failure surfaces a real error_message instead of "unknown" ----
+
+    /**
+     * A doc-count mismatch at cutover throws inside the COMPLETING handler, reaching the state
+     * machine's generic onFailure rather than failWithReason(). This asserts that path now records
+     * the real reason in the status document instead of the "unknown" default applied by onFailing.
+     */
+    @SuppressWarnings("unchecked")
+    public void testCutoverDocCountMismatchSurfacesRealErrorMessage() throws Exception {
+        mockUpdateSettingsSuccess();
+        mockAliasSuccess();
+        mockAddBlockSuccess();
+        mockFlushSuccess();
+        mockRefreshSuccess();
+        // Source has 1000 docs, target only 844 (156 short, as on shard 116); tolerance defaults to 0,
+        // so cutover doc-count validation throws DocCountValidationException.
+        mockSearchDocCounts("source-idx", 1000L, "target-idx", 844L);
+
+        Map<Integer, AoscMigrationsClusterState.ShardMigrationClusterState> shards = new HashMap<>();
+        shards.put(
+            0,
+            AoscMigrationsClusterState.ShardMigrationClusterState.builder()
+                .phase(ShardPhase.BACKFILLING)
+                .lastReplayedSeqNo(0L)
+                .backfillCutoffSeqNo(0L)
+                .failure(null)
+                .meta(MigrationMetadata.EMPTY)
+                .build()
+        );
+        AoscMigrationsClusterState.Entry entry = entryWithShards("migration-cutover-doccount", CoordinatorPhase.ACTIVE, shards);
+
+        MigrationCoordinator coordinator = new MigrationCoordinator(
+            AoscLogger.create(MigrationCoordinator.class),
+            "migration-cutover-doccount",
+            CoordinatorPhase.ACTIVE,
+            entry,
+            mockClient,
+            mockClusterService,
+            mockThreadPool,
+            mockMigrationDocumentService,
+            () -> {}
+        );
+
+        coordinator.start();
+        Thread.sleep(50);
+
+        // Drive the shard to COMPLETED so the coordinator runs through both gates (CONVERGED, then
+        // COMPLETED) into COMPLETING, where cutover validates doc counts and fails.
+        coordinator.acceptShardUpdate(0, ShardProgressDocument.builder().phase(ShardPhase.COMPLETED).build());
+
+        assertBusy(() -> {
+            String error = coordinator.buildStatusDocument().errorMessage();
+            assertNotNull("error_message should be populated on cutover failure", error);
+            assertNotEquals("error_message must not fall back to the 'unknown' default", "unknown", error);
+            assertTrue(
+                "error_message should describe the doc-count mismatch but was: " + error,
+                error.contains("Doc count validation failed") && error.contains("diff=156")
+            );
+        }, 10, TimeUnit.SECONDS);
+
+        coordinator.close();
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockRefreshSuccess() {
+        doAnswer(invocation -> {
+            ActionListener<RefreshResponse> listener = invocation.getArgument(1);
+            listener.onResponse(mock(RefreshResponse.class));
+            return null;
+        }).when(mockIndicesAdmin).refresh(any(RefreshRequest.class), any(ActionListener.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockFlushSuccess() {
+        doAnswer(invocation -> {
+            ActionListener<FlushResponse> listener = invocation.getArgument(1);
+            listener.onResponse(mock(FlushResponse.class));
+            return null;
+        }).when(mockIndicesAdmin).flush(any(FlushRequest.class), any(ActionListener.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockAddBlockSuccess() {
+        doAnswer(invocation -> {
+            ActionListener<AddIndexBlockResponse> listener = invocation.getArgument(1);
+            listener.onResponse(mock(AddIndexBlockResponse.class));
+            return null;
+        }).when(mockIndicesAdmin).addBlock(any(AddIndexBlockRequest.class), any(ActionListener.class));
+    }
+
+    @SuppressWarnings("unchecked")
+    private void mockSearchDocCounts(String sourceIndex, long sourceCount, String targetIndex, long targetCount) {
+        doAnswer(invocation -> {
+            SearchRequest req = invocation.getArgument(0);
+            ActionListener<SearchResponse> listener = invocation.getArgument(1);
+            String requestedIndex = req.indices()[0];
+            long count;
+            if (requestedIndex.equals(sourceIndex)) {
+                count = sourceCount;
+            } else if (requestedIndex.equals(targetIndex)) {
+                count = targetCount;
+            } else {
+                listener.onFailure(new IllegalArgumentException("Unexpected index: " + requestedIndex));
+                return null;
+            }
+            SearchHits hits = new SearchHits(new SearchHit[0], new TotalHits(count, TotalHits.Relation.EQUAL_TO), 1.0f);
+            SearchResponse response = mock(SearchResponse.class);
+            when(response.getHits()).thenReturn(hits);
+            listener.onResponse(response);
+            return null;
+        }).when(mockClient).search(any(SearchRequest.class), any(ActionListener.class));
     }
 
     // ---- Test: rollback restores transient target settings on failure ----

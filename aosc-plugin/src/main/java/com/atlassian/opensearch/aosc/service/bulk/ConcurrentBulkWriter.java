@@ -115,8 +115,65 @@ public class ConcurrentBulkWriter implements BulkWriter {
         this.permits = localPermits;
         AtomicReference<Throwable> fatalError = new AtomicReference<>();
         AtomicLong pauseUntil = new AtomicLong(0);
-        boolean sourceExhausted = false;
 
+        // A momentarily empty source (poll() == null) is not exhaustion: an in-flight batch can still
+        // requeue ops via the async PAUSE_AND_RETRY callback. Drain in flight, then finish only once
+        // the source is truly exhausted (iterator drained AND retry deque empty); otherwise loop.
+        do {
+            dispatchUntilSourceMomentarilyEmpty(source, builder, progressCallback, localPermits, fatalError, pauseUntil);
+
+            // Abort promptly on cancel/fatal — don't wait for the drain.
+            if (cancelled.get()) {
+                cancelAllInflight();
+                future.completeExceptionally(new CancellationException("ConcurrentBulkWriter cancelled"));
+                return;
+            }
+            if (fatalError.get() != null) {
+                cancelAllInflight();
+                future.completeExceptionally(fatalError.get());
+                return;
+            }
+
+            // Barrier: returnForRetry runs inside the completion callback before the tracked future
+            // resolves, so once allOf() returns nothing is in flight and any requeue is already
+            // visible to the isExhausted() check below.
+            if (!inflight.isEmpty()) {
+                try {
+                    CompletableFuture.allOf(inflight.toArray(new CompletableFuture[0])).join();
+                } catch (Exception e) {
+                    // Individual failures already captured in fatalError via whenComplete
+                }
+            }
+
+            // The drain may have surfaced a fatal error, or a cancel may have raced in.
+            if (cancelled.get()) {
+                cancelAllInflight();
+                future.completeExceptionally(new CancellationException("ConcurrentBulkWriter cancelled"));
+                return;
+            }
+            if (fatalError.get() != null) {
+                cancelAllInflight();
+                future.completeExceptionally(fatalError.get());
+                return;
+            }
+        } while (!source.isExhausted());
+
+        future.complete(null);
+    }
+
+    /**
+     * Dispatches batches until {@link DocSource#poll()} momentarily returns {@code null}, or the
+     * writer is cancelled, or a fatal error is recorded. {@link #readerLoop} then drains in-flight
+     * requests and re-checks true exhaustion.
+     */
+    private <M> void dispatchUntilSourceMomentarilyEmpty(
+        DocSource<M> source,
+        BatchBuilder<M> builder,
+        Consumer<PreparedBatch<M>> progressCallback,
+        Semaphore localPermits,
+        AtomicReference<Throwable> fatalError,
+        AtomicLong pauseUntil
+    ) throws InterruptedException {
         while (!cancelled.get() && fatalError.get() == null) {
             // Honour overload pause — block on zero-permit semaphore as interruptible sleep
             long remaining = pauseUntil.getAndSet(0) - System.currentTimeMillis();
@@ -152,7 +209,6 @@ public class ConcurrentBulkWriter implements BulkWriter {
             PreparedBatch<M> batch = builder.nextBatch(controller.nextBatchSize(), controller.maxBatchBytes());
             if (batch == null) {
                 localPermits.release();
-                sourceExhausted = true;
                 break;
             }
             if (batch.docCount() == 0) {
@@ -186,32 +242,6 @@ public class ConcurrentBulkWriter implements BulkWriter {
             });
             inflight.add(tracked);
             tracked.whenComplete((v, e) -> inflight.remove(tracked));
-        }
-
-        // Terminal: cancel/fatal complete immediately, normal exit drains
-        if (cancelled.get()) {
-            cancelAllInflight();
-            future.completeExceptionally(new CancellationException("ConcurrentBulkWriter cancelled"));
-            return;
-        }
-        if (fatalError.get() != null) {
-            cancelAllInflight();
-            future.completeExceptionally(fatalError.get());
-            return;
-        }
-        if (sourceExhausted && !inflight.isEmpty()) {
-            try {
-                CompletableFuture.allOf(inflight.toArray(new CompletableFuture[0])).join();
-            } catch (Exception e) {
-                // Individual failures already captured in fatalError via whenComplete
-            }
-        }
-
-        Throwable err = fatalError.get();
-        if (err != null) {
-            future.completeExceptionally(err);
-        } else {
-            future.complete(null);
         }
     }
 

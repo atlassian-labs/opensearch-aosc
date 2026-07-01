@@ -128,6 +128,20 @@ repositories {
     }
 }
 
+// YAML REST tests resolve org.opensearch.test:framework, which can expose OpenSearch
+// patch-specific metadata conflicts under failOnVersionConflict().
+def openSearchYamlRestDependencyOverrides = [
+    '2.19.5': [
+        'com.google.errorprone:error_prone_annotations': '2.45.0',
+    ],
+]
+def yamlRestDependencyOverrides = openSearchYamlRestDependencyOverrides[opensearch_version] ?: [:]
+configurations.matching { it.name.startsWith('yamlRestTest') }.configureEach {
+    if (!yamlRestDependencyOverrides.isEmpty()) {
+        resolutionStrategy.force yamlRestDependencyOverrides.collect { module, version -> "${module}:${version}" }
+    }
+}
+
 // ---------------------------------------------------------------------------
 // License SHA files: the dependencyLicenses task requires a .jar.sha1 file for
 // each bundled dependency.  Because the Jackson version changes with each

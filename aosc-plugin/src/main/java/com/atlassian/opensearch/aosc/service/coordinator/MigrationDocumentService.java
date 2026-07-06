@@ -19,12 +19,14 @@ import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.NoShardAvailableActionException;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.mapping.put.PutMappingRequest;
+import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.search.SearchPhaseExecutionException;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.ShardSearchFailure;
 import org.opensearch.action.support.WriteRequest;
+import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.index.IndexNotFoundException;
@@ -42,6 +44,7 @@ import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
 import java.util.Objects;
+import java.util.Set;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import java.util.concurrent.atomic.AtomicReference;
@@ -63,6 +66,11 @@ public class MigrationDocumentService {
     private final AoscLogger logger;
     static final String MIGRATIONS_INDEX = ".aosc-migrations";
     static final String SCHEMA_RESOURCE = "/aosc-migrations-schema.json";
+    /**
+     * Static, create-time settings that cannot be updated on a live index — a blocklist. Every
+     * other setting in the schema is dynamic and is reconciled onto pre-existing indices.
+     */
+    private static final Set<String> NON_IDEMPOTENT_SETTINGS = Set.of("index.number_of_shards");
 
     private final Client client;
     private final ThreadContext threadContext;
@@ -140,8 +148,10 @@ public class MigrationDocumentService {
                 logger.info("Created system index: {}", MIGRATIONS_INDEX);
                 return CompletableFuture.<Void>completedFuture(null);
             }
-            Throwable cause = (ex instanceof CompletionException) ? ex.getCause() : ex;
-            if (cause instanceof ResourceAlreadyExistsException) {
+            // "already exists" can arrive wrapped (CompletionException / RemoteTransportException)
+            // when the create is routed to a remote cluster-manager node — match it anywhere in the
+            // cause chain, not just the local unwrapped form.
+            if (AsyncUtils.hasCauseOfType(ex, ResourceAlreadyExistsException.class)) {
                 logger.debug("System index {} already exists — enforcing schema", MIGRATIONS_INDEX);
                 return enforceSchema(schema);
             }
@@ -155,16 +165,57 @@ public class MigrationDocumentService {
     }
 
     /**
-     * Apply settings and mappings from the schema to an already-existing index.
-     * Called on every CM election to ensure pre-existing indices have the correct
-     * schema (e.g., {@code dynamic: false}, {@code shards.enabled: false}).
+     * Bring an already-existing index up to the current schema. Called on every cluster-manager
+     * election, so pre-existing indices pick up the mappings ({@code dynamic: false},
+     * {@code shards.enabled: false}) and the reconcilable settings ({@code auto_expand_replicas} —
+     * indices created with 0 replicas by an older plugin become resilient with no manual step).
      */
-    @SuppressWarnings("unchecked")
     private CompletableFuture<Void> enforceSchema(Map<String, Object> schema) {
         if (schema == null) {
             return CompletableFuture.completedFuture(null);
         }
+        return enforceMappings(schema).thenCompose(ignored -> enforceSettings(schema));
+    }
 
+    @SuppressWarnings("unchecked")
+    private CompletableFuture<Void> enforceSettings(Map<String, Object> schema) {
+        Settings reconciled = reconcilableSettings((Map<String, Object>) schema.get("settings"));
+        if (reconciled.isEmpty()) {
+            return CompletableFuture.completedFuture(null);
+        }
+        UpdateSettingsRequest req = new UpdateSettingsRequest(MIGRATIONS_INDEX).settings(reconciled);
+        return AsyncClientHelper.executeUpdateSettingsAsync(client, req).<Void>thenApply(r -> {
+            logger.debug("Enforced settings on {}", MIGRATIONS_INDEX);
+            return null;
+        }).exceptionally(e -> {
+            logger.error("Failed to enforce settings on {}", MIGRATIONS_INDEX, e);
+            throw (e instanceof CompletionException) ? (CompletionException) e : new CompletionException(e);
+        });
+    }
+
+    /**
+     * The subset of the schema's settings block that is safe to reconcile onto a live index:
+     * everything except the {@link #NON_IDEMPOTENT_SETTINGS} static, create-time settings. The raw
+     * map is normalised through {@link Settings} so both flat ({@code "index.auto_expand_replicas"})
+     * and nested ({@code "index": {"auto_expand_replicas": ...}}) JSON forms resolve to the same
+     * flat keys before the blocklist is applied.
+     */
+    static Settings reconcilableSettings(Map<String, Object> rawSettings) {
+        if (rawSettings == null || rawSettings.isEmpty()) {
+            return Settings.EMPTY;
+        }
+        Settings normalised = Settings.builder().loadFromMap(rawSettings).build();
+        Settings.Builder reconcilable = Settings.builder();
+        for (String key : normalised.keySet()) {
+            if (!NON_IDEMPOTENT_SETTINGS.contains(key)) {
+                reconcilable.put(key, normalised.get(key));
+            }
+        }
+        return reconcilable.build();
+    }
+
+    @SuppressWarnings("unchecked")
+    private CompletableFuture<Void> enforceMappings(Map<String, Object> schema) {
         Map<String, Object> mappings = (Map<String, Object>) schema.get("mappings");
         if (mappings == null) {
             return CompletableFuture.completedFuture(null);

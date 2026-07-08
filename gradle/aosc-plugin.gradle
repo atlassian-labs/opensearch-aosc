@@ -132,9 +132,16 @@ if (resolvedJacksonDatabindVersion == null || resolvedJacksonAnnotationsVersion 
 
 repositories {
     mavenLocal()
-    maven { url "https://aws.oss.sonatype.org/content/repositories/snapshots" }
     mavenCentral()
     maven { url "https://plugins.gradle.org/m2/" }
+    // AWS OSS Sonatype snapshots intermittently 504 and fail configuration; restrict it to
+    // snapshot artifacts (and prefer mavenCentral above) so release resolution never hits it.
+    maven {
+        url "https://aws.oss.sonatype.org/content/repositories/snapshots"
+        mavenContent {
+            snapshotsOnly()
+        }
+    }
 }
 
 // ---------------------------------------------------------------------------

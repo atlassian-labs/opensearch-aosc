@@ -8,4 +8,40 @@
 
 rootProject.name = 'opensearch-aosc'
 
-include 'aosc-plugin'
+// Version knob: a single -P project property (no -D, no env). One exact OpenSearch
+// version per invocation selects the source variant + JDK + descriptor. Set it per
+// invocation (-PopensearchVersion=3.6.0) or once in ~/.gradle/gradle.properties.
+def osv = providers.gradleProperty('opensearchVersion').orNull
+if (!osv) {
+    throw new GradleException(
+        "opensearchVersion is required.\n" +
+        "  Pass -PopensearchVersion=<x.y.z> (e.g. 2.19.0 or 3.6.0), or set it in ~/.gradle/gradle.properties.\n" +
+        "  Supported versions are listed in release/os2.properties / release/os3.properties.")
+}
+
+def major = osv.tokenize('.')[0]
+def lineFile = new File(rootDir, "release/os${major}.properties")
+if (!lineFile.exists()) {
+    throw new GradleException("Unsupported OpenSearch major ${major} for version ${osv}: no ${lineFile.name}.")
+}
+def lineProps = new Properties()
+lineFile.withInputStream { lineProps.load(it) }
+def declared = ((lineProps.getProperty('build_versions', '') + ',' + lineProps.getProperty('test_versions', ''))
+    .tokenize(','))*.trim().findAll { it } as Set
+if (!declared.contains(osv)) {
+    throw new GradleException(
+        "OpenSearch ${osv} is not declared in ${lineFile.name} " +
+        "(build_versions/test_versions = ${declared.sort().join(', ')}).")
+}
+
+// Resolve the version once here and share it with every downstream script (root build.gradle
+// buildscript + allprojects, and the applied gradle/aosc-plugin.gradle) via gradle.ext — so the
+// property read, major extraction, and manifest load are not duplicated across files.
+gradle.ext.aoscOsVersion = osv
+gradle.ext.aoscOsMajor = major
+gradle.ext.aoscOsMinor = osv.tokenize('.')[0..1].join('.')
+gradle.ext.aoscLineProps = lineProps
+
+// Build-tools is a single global buildscript classpath dependency, so only one major
+// is active per invocation — include only the module matching the selected version.
+include "aosc-plugin-os${major}"

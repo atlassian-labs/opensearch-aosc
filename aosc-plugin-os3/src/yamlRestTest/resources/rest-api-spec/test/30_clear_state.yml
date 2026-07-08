@@ -1,0 +1,110 @@
+---
+"Clear state default is dry-run on empty cluster":
+  # Clear any leftover state from previous test suites
+  - do:
+      aosc.clear_state:
+        dry_run: false
+
+  # Default call (no params) should be dry_run=true
+  - do:
+      aosc.clear_state: {}
+  - match: { dry_run: true }
+  - length: { migrations: 0 }
+
+---
+"Clear state on empty cluster returns empty migrations":
+  # Clear any leftover state from previous test suites
+  - do:
+      aosc.clear_state:
+        dry_run: false
+
+  - do:
+      aosc.clear_state:
+        dry_run: false
+  - match: { dry_run: false }
+  - match: { try_close: true }
+  - length: { migrations: 0 }
+
+---
+"Clear state dry run on empty cluster":
+  # Clear any leftover state from previous test suites
+  - do:
+      aosc.clear_state:
+        dry_run: false
+
+  - do:
+      aosc.clear_state:
+        dry_run: true
+  - match: { dry_run: true }
+  - length: { migrations: 0 }
+
+---
+"Clear state is idempotent":
+  # Clear any leftover state from previous test suites
+  - do:
+      aosc.clear_state:
+        dry_run: false
+
+  - do:
+      aosc.clear_state:
+        dry_run: false
+  - length: { migrations: 0 }
+
+  - do:
+      aosc.clear_state:
+        dry_run: false
+  - length: { migrations: 0 }
+
+---
+"Clear state removes migration entries from cluster state":
+  # Clear any leftover state from previous test suites
+  - do:
+      aosc.clear_state:
+        dry_run: false
+
+  - do:
+      indices.create:
+        index: clear-state-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: clear-state-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      index:
+        index: clear-state-source
+        id: "1"
+        refresh: true
+        body: { foo: "bar" }
+
+  # Start a migration to populate cluster state
+  - do:
+      aosc.start:
+        index: clear-state-source
+        body:
+          target_index: "clear-state-target"
+          alias: "clear-state-alias"
+  - match: { accepted: true }
+  - is_true: migration_id
+  - set: { migration_id: started_id }
+
+  # Clear state — verify response shape
+  - do:
+      aosc.clear_state:
+        dry_run: false
+  - match: { dry_run: false }
+  - match: { try_close: true }
+  - length: { migrations: 1 }
+
+  # Second clear is idempotent — no more entries in cluster state
+  - do:
+      aosc.clear_state:
+        dry_run: false
+  - length: { migrations: 0 }

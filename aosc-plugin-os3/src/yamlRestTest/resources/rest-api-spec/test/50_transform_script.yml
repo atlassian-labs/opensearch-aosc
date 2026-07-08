@@ -1,0 +1,118 @@
+---
+"Test start rejects transform_script without source for inline type":
+  - do:
+      indices.create:
+        index: yaml-ts-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-ts-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      catch: bad_request
+      aosc.start:
+        index: yaml-ts-source
+        body:
+          target_index: yaml-ts-target
+          alias: yaml-ts-alias
+          transform_script:
+            type: inline
+
+---
+"Test start rejects stored transform_script with non-existent id":
+  - do:
+      indices.create:
+        index: yaml-tsid-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-tsid-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      catch: bad_request
+      aosc.start:
+        index: yaml-tsid-source
+        body:
+          target_index: yaml-tsid-target
+          alias: yaml-tsid-alias
+          transform_script:
+            type: stored
+            id: "does-not-exist-script"
+
+---
+"Test start rejects inline transform_script that references missing param":
+  - do:
+      indices.create:
+        index: yaml-tsdr-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-tsdr-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      catch: bad_request
+      aosc.start:
+        index: yaml-tsdr-source
+        body:
+          target_index: yaml-tsdr-target
+          alias: yaml-tsdr-alias
+          transform_script:
+            type: inline
+            # The test cluster has the Painless engine, so this script compiles.
+            # Painless returns null for an absent param key (it does not throw), so we
+            # dereference it (.length()) to force a NullPointerException during the
+            # start-time dry-run — which AOSC surfaces as a 400.
+            source: "ctx._source.tag = params.missing_param.length()"
+
+# Positive cases covered by TransformScriptIT.
+
+
+---
+"Test unknown script_context is rejected":
+  - do:
+      indices.create:
+        index: yaml-ctx-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-ctx-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      catch: bad_request
+      aosc.start:
+        index: yaml-ctx-source
+        body:
+          target_index: yaml-ctx-target
+          alias: yaml-ctx-alias
+          transform_script:
+            type: inline
+            source: "ctx._source.x = 1"
+            script_context: "nonexistent_provider"
+  - match: { error.type: illegal_argument_exception }

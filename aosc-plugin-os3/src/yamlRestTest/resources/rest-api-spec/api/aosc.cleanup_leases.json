@@ -1,0 +1,29 @@
+{
+  "aosc.cleanup_leases": {
+    "documentation": {
+      "url": "https://github.com/atlassian-labs/opensearch-aosc",
+      "description": "Discover and release orphaned AOSC retention leases"
+    },
+    "stability": "experimental",
+    "url": {
+      "paths": [
+        {
+          "path": "/_plugins/_aosc/_admin/_cleanup_leases",
+          "methods": ["POST"]
+        }
+      ]
+    },
+    "params": {
+      "index": {
+        "type": "string",
+        "description": "Restrict cleanup to retention leases on the named index. Omit to scan all open indices."
+      },
+      "dry_run": {
+        "type": "boolean",
+        "default": true,
+        "description": "If true, list matching AOSC leases without removing them. Pass dry_run=false to actually remove leases."
+      }
+    },
+    "body": null
+  }
+}

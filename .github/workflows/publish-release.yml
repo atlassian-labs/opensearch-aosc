@@ -1,27 +1,26 @@
 name: Publish Release
 
+# Releases are cut from develop and tag-driven: one release per AOSC version (tag v<version>)
+# containing every per-minor zip for both OpenSearch lines. The version is derived from the
+# latest v* tag + the chosen bump, so develop's version.properties stays 0.0.0-dev.
 on:
   workflow_dispatch:
     inputs:
-      os_line:
-        description: OpenSearch compatibility line
+      bump:
+        description: Semver bump for this release (from the latest v* tag)
         required: true
-        default: os3
+        default: patch
         type: choice
         options:
-          - os2
-          - os3
-      prerelease:
-        description: Mark draft release as prerelease
-        required: true
-        default: true
-        type: boolean
+          - patch
+          - minor
+          - major
 
 permissions:
   contents: read
 
 concurrency:
-  group: publish-release-${{ github.ref_name }}-${{ inputs.os_line }}
+  group: publish-release
   cancel-in-progress: false
 
 jobs:
@@ -29,45 +28,31 @@ jobs:
     name: Metadata
     runs-on: ubuntu-latest
     outputs:
-      aosc_version: ${{ steps.matrix.outputs.aosc_version }}
-      os_line: ${{ steps.matrix.outputs.os_line }}
-      java_version: ${{ steps.matrix.outputs.java_version }}
-      release_branch: ${{ steps.matrix.outputs.release_branch }}
-      primary_version: ${{ steps.matrix.outputs.primary_version }}
-      build_versions: ${{ steps.matrix.outputs.build_versions }}
-      test_versions: ${{ steps.matrix.outputs.test_versions }}
-      release_tag: ${{ steps.matrix.outputs.release_tag }}
-      docs_version: ${{ steps.matrix.outputs.docs_version }}
-      build_versions_json: ${{ steps.matrix.outputs.build_versions_json }}
-      test_versions_json: ${{ steps.matrix.outputs.test_versions_json }}
+      next_version: ${{ steps.meta.outputs.next_version }}
+      sha: ${{ steps.meta.outputs.sha }}
+      build_matrix_json: ${{ steps.meta.outputs.build_matrix_json }}
+      release_compat_matrix_json: ${{ steps.meta.outputs.release_compat_matrix_json }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
-          ref: ${{ github.ref_name }}
-      - id: matrix
-        run: ./scripts/github-ci-matrix.sh "${{ inputs.os_line }}" --github-output
-      - name: Check release state
+          ref: develop
+      - id: meta
+        run: |
+          git fetch --tags --force origin
+          NEXT="$(./scripts/ci-metadata.py --next-version "${{ inputs.bump }}")"
+          echo "next_version=${NEXT}" >> "$GITHUB_OUTPUT"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+          echo "build_matrix_json=$(./scripts/ci-metadata.py all --build-matrix)" >> "$GITHUB_OUTPUT"
+          echo "release_compat_matrix_json=$(./scripts/ci-metadata.py all --release-compat-matrix)" >> "$GITHUB_OUTPUT"
+      - name: Guard version is fresh
         env:
-          AOSC_VERSION: ${{ steps.matrix.outputs.aosc_version }}
-          RELEASE_BRANCH: ${{ steps.matrix.outputs.release_branch }}
-          RELEASE_TAG: ${{ steps.matrix.outputs.release_tag }}
+          NEXT: ${{ steps.meta.outputs.next_version }}
           GH_TOKEN: ${{ github.token }}
         run: |
-          if [[ "${GITHUB_REF_NAME}" != "${RELEASE_BRANCH}" ]]; then
-            echo "Release line ${{ steps.matrix.outputs.os_line }} must be published from ${RELEASE_BRANCH}; current ref is ${GITHUB_REF_NAME}" >&2
-            exit 1
-          fi
-          if [[ ! "${AOSC_VERSION}" =~ ^[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
-            echo "Release publishing requires aosc.version to be exact X.Y.Z; found ${AOSC_VERSION}" >&2
-            exit 1
-          fi
-          if gh release view "${RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "GitHub release ${RELEASE_TAG} already exists." >&2
-            exit 1
-          fi
-          if git ls-remote --exit-code --tags origin "refs/tags/${RELEASE_TAG}" >/dev/null 2>&1; then
-            echo "Git tag ${RELEASE_TAG} already exists." >&2
+          if git ls-remote --exit-code --tags origin "refs/tags/v${NEXT}" >/dev/null 2>&1 \
+             || gh release view "v${NEXT}" --repo "${GITHUB_REPOSITORY}" >/dev/null 2>&1; then
+            echo "v${NEXT} already exists — bump differently or delete the stale tag/release." >&2
             exit 1
           fi
 
@@ -76,106 +61,167 @@ jobs:
     needs: metadata
     uses: ./.github/workflows/components.yml
     with:
-      os_line: ${{ needs.metadata.outputs.os_line }}
+      os_line: all
+      tier: full
       include_docs: true
+      ref: ${{ needs.metadata.outputs.sha }}
       artifact_retention_days: 14
 
   build:
-    name: Build release ZIPs
-    needs:
-      - metadata
-      - validation
-    if: ${{ always() && needs.metadata.result == 'success' && needs.validation.result == 'success' }}
+    name: Build os${{ matrix.opensearch_version }} zip
+    needs: metadata
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include: ${{ fromJSON(needs.metadata.outputs.build_matrix_json) }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: ${{ needs.metadata.outputs.java_version }}
+          java-version: ${{ matrix.build_java_version }}
           cache: gradle
+      - name: Select Gradle for the OpenSearch version
+        run: ./scripts/set-gradle.sh "${{ matrix.opensearch_version }}"
       - name: Pre-fetch Gradle
         run: ./scripts/ensure-gradle.sh
-      - name: Build release ZIPs
-        run: ./scripts/build-release-zips.sh "${{ needs.metadata.outputs.os_line }}"
-      - name: Generate release notes stub
+      - name: Build per-minor zip
+        env:
+          OS_VERSION: ${{ matrix.opensearch_version }}
+          NEXT: ${{ needs.metadata.outputs.next_version }}
         run: |
-          {
-            echo "# ${{ needs.metadata.outputs.release_tag }}"
-            echo
-            echo "## Compatibility"
-            echo
-            echo "This release contains AOSC ${{ needs.metadata.outputs.aosc_version }} builds for ${{ needs.metadata.outputs.os_line }}."
-            echo
-            echo "Build versions: ${{ needs.metadata.outputs.build_versions }}"
-            echo
-            echo "Test versions: ${{ needs.metadata.outputs.test_versions }}"
-            echo
-            echo "Documentation: https://atlassian-labs.github.io/opensearch-aosc/${{ needs.metadata.outputs.docs_version }}/"
-            echo
-            echo "Release branch: ${GITHUB_REF_NAME}"
-            echo
-            echo "Source commit: ${GITHUB_SHA}"
-            echo
-            echo "See \`SHA256SUMS\` for asset checksums."
-          } > build/release/RELEASE_NOTES.md
+          ./scripts/gradle-with-retry.sh ./gradlew --no-daemon bundlePlugin \
+            -PopensearchVersion="${OS_VERSION}" -PaoscVersion="${NEXT}"
+          MINOR="${OS_VERSION%.*}"
+          SRC="$(ls aosc-plugin-*/build/distributions/opensearch-aosc-${NEXT}.zip)"
+          mkdir -p dist
+          cp "${SRC}" "dist/opensearch-aosc-${NEXT}-os${MINOR}.zip"
       - uses: actions/upload-artifact@v7
         with:
-          name: release-assets-${{ needs.metadata.outputs.release_tag }}-${{ github.run_attempt }}
-          path: |
-            build/release/*.zip
-            build/release/SHA256SUMS
-            build/release/RELEASE_NOTES.md
-            build/release/release.env
+          name: relzip-${{ matrix.opensearch_version }}
+          path: dist/*.zip
           if-no-files-found: error
           retention-days: 14
 
-  draft-release:
-    name: Create draft GitHub release
+  release-compat:
+    # Install the EXACT published zip (the relzip-* artifact from the build job, built at
+    # build_version with descriptor ~X.Y.0) onto a Docker node at each boundary patch of the minor
+    # and run the docker smoke suite. This validates the real shipped bytes across the patches they
+    # claim to support — the rebuild-per-patch validation matrix never installs the shipped zip on
+    # a higher patch, and rebuilding here would only test an equivalent rebuild, not the artifact.
+    name: Compat ${{ matrix.opensearch_version }} zip on ${{ matrix.container_version }}
     needs:
       - metadata
       - build
-    if: ${{ always() && needs.metadata.result == 'success' && needs.build.result == 'success' }}
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: true
+      matrix:
+        include: ${{ fromJSON(needs.metadata.outputs.release_compat_matrix_json) }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.metadata.outputs.sha }}
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: ${{ matrix.build_java_version }}
+          cache: gradle
+      - uses: actions/download-artifact@v8
+        with:
+          pattern: relzip-*
+          path: dist
+          merge-multiple: true
+      - name: Select Gradle for the OpenSearch version
+        run: ./scripts/set-gradle.sh "${{ matrix.opensearch_version }}"
+      - name: Pre-fetch Gradle
+        run: ./scripts/ensure-gradle.sh
+      - name: Smoke the published zip on the patch container
+        env:
+          BUILD_VERSION: ${{ matrix.opensearch_version }}
+          CONTAINER_VERSION: ${{ matrix.container_version }}
+          NEXT: ${{ needs.metadata.outputs.next_version }}
+        run: |
+          MINOR="${BUILD_VERSION%.*}"
+          ZIP="dist/opensearch-aosc-${NEXT}-os${MINOR}.zip"
+          if [[ ! -f "${ZIP}" ]]; then
+            echo "Published zip not found: ${ZIP}" >&2
+            ls -R dist >&2 || true
+            exit 1
+          fi
+          # -Ptests.docker.pluginZip installs the downloaded artifact (no rebuild). The build
+          # version still selects the module + compiles the smoke harness; the container runs the patch.
+          ./scripts/gradle-with-retry.sh ./gradlew --no-daemon smokeTestDocker \
+            -PopensearchVersion="${BUILD_VERSION}" \
+            -Ptests.docker.opensearchVersion="${CONTAINER_VERSION}" \
+            -Ptests.docker.pluginZip="${ZIP}"
+
+  publish:
+    name: Publish release
+    needs:
+      - metadata
+      - validation
+      - build
+      - release-compat
+    if: ${{ needs.metadata.result == 'success' && needs.validation.result == 'success' && needs.build.result == 'success' && needs.release-compat.result == 'success' }}
     runs-on: ubuntu-latest
     environment: release
     permissions:
       contents: write
       attestations: write
       id-token: write
+    env:
+      NEXT: ${{ needs.metadata.outputs.next_version }}
+      SHA: ${{ needs.metadata.outputs.sha }}
+      GH_TOKEN: ${{ github.token }}
     steps:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ needs.metadata.outputs.sha }}
       - uses: actions/download-artifact@v8
         with:
-          name: release-assets-${{ needs.metadata.outputs.release_tag }}-${{ github.run_attempt }}
-          path: build/release
-      - name: Attest release ZIPs
+          pattern: relzip-*
+          path: dist
+          merge-multiple: true
+      - name: Checksums + release notes
+        run: |
+          cd dist
+          shasum -a 256 *.zip > SHA256SUMS
+          {
+            echo "# v${NEXT}"
+            echo
+            echo "AOSC ${NEXT} — plugin builds for OpenSearch 2.x and 3.x."
+            echo
+            echo "Download the zip matching your OpenSearch minor:"
+            for z in $(ls *.zip | sort); do echo "- ${z}"; done
+            echo
+            echo "Docs: https://atlassian-labs.github.io/opensearch-aosc/${NEXT}/"
+            echo
+            echo "Released from develop @ ${SHA}"
+            echo
+            echo "Checksums in \`SHA256SUMS\`."
+          } > RELEASE_NOTES.md
+      - name: Attest provenance
         uses: actions/attest-build-provenance@v4
         with:
-          subject-path: build/release/*.zip
-      - name: Create draft GitHub release
-        env:
-          GH_TOKEN: ${{ github.token }}
-          RELEASE_TAG: ${{ needs.metadata.outputs.release_tag }}
+          subject-path: dist/*.zip
+      - name: Create release (creates tag v<version> at the develop SHA)
         run: |
-          git fetch --tags origin
-          git tag "${RELEASE_TAG}" "${GITHUB_SHA}"
-          git push origin "refs/tags/${RELEASE_TAG}"
-          FLAGS=(--draft --target "${GITHUB_SHA}" --title "${RELEASE_TAG}" --notes-file build/release/RELEASE_NOTES.md)
-          if [[ "${{ inputs.prerelease }}" == "true" ]]; then
-            FLAGS+=(--prerelease)
-          fi
-          gh release create "${RELEASE_TAG}" build/release/*.zip build/release/SHA256SUMS "${FLAGS[@]}"
+          gh release create "v${NEXT}" --target "${SHA}" --title "v${NEXT}" \
+            --notes-file dist/RELEASE_NOTES.md dist/*.zip dist/SHA256SUMS
 
   deploy_docs:
     name: Deploy release docs
     needs:
       - metadata
-      - build
-      - draft-release
-    if: ${{ always() && needs.metadata.result == 'success' && needs.build.result == 'success' && needs.draft-release.result == 'success' }}
+      - publish
+    if: ${{ needs.publish.result == 'success' }}
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -186,6 +232,7 @@ jobs:
       - uses: actions/checkout@v6
         with:
           fetch-depth: 0
+          ref: ${{ needs.metadata.outputs.sha }}
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -193,4 +240,4 @@ jobs:
       - name: Install docs dependencies
         run: npm ci
       - name: Deploy release docs
-        run: scripts/deploy-docs-version.sh --version "${{ needs.metadata.outputs.docs_version }}"
+        run: scripts/deploy-docs-version.sh --version "${{ needs.metadata.outputs.next_version }}"

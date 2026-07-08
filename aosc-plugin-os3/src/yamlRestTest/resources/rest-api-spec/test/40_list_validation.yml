@@ -1,0 +1,130 @@
+---
+"List rejects size <= 0 with HTTP 400":
+  - do:
+      catch: bad_request
+      aosc.list:
+        size: 0
+
+  - do:
+      catch: bad_request
+      aosc.list:
+        size: -1
+
+---
+"List rejects unknown status phase with HTTP 400":
+  - do:
+      catch: bad_request
+      aosc.list:
+        status: BOGUS
+
+---
+"List rejects empty token in status with HTTP 400":
+  - do:
+      catch: bad_request
+      aosc.list:
+        status: "COMPLETED,,FAILED"
+
+---
+"List rejects blank status with HTTP 400":
+  - do:
+      catch: bad_request
+      aosc.list:
+        status: " "
+
+---
+"List accepts size above max and silently clamps":
+  # 99999 is well over the internal max of 500; must succeed (no 400).
+  # Start a migration first to ensure .aosc-migrations is searchable
+  # (avoids race against index recreation on OS 2.15).
+  - do:
+      indices.create:
+        index: list-clamp-src
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: list-clamp-tgt
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: list-clamp-src
+        body:
+          target_index: list-clamp-tgt
+          alias: list-clamp-alias
+  - match: { accepted: true }
+
+  # Wait for .aosc-migrations to be searchable (OS 2.15/2.17 shard init can lag)
+  - do:
+      cluster.health:
+        index: .aosc-migrations
+        wait_for_status: yellow
+        timeout: 10s
+
+  - do:
+      aosc.list:
+        size: 99999
+  - match: { truncated: false }
+
+  - do:
+      aosc.cancel:
+        index: list-clamp-src
+  - do:
+      aosc.clear_state:
+        dry_run: false
+
+---
+"List status=ACTIVE returns in-flight migration":
+  # Start a real migration so we have something to filter on.
+  - do:
+      indices.create:
+        index: list-validation-src
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: list-validation-tgt
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: list-validation-src
+        body:
+          target_index: "list-validation-tgt"
+          alias: "list-validation-alias"
+  - match: { accepted: true }
+
+  # Wait for .aosc-migrations to be searchable (OS 2.15/2.17 shard init can lag)
+  - do:
+      cluster.health:
+        index: .aosc-migrations
+        wait_for_status: yellow
+        timeout: 10s
+
+  # Verify ACTIVE filter (case-insensitive) returns the migration we just started.
+  - do:
+      aosc.list:
+        status: active
+  - is_true: migrations
+  - match: { truncated: false }
+
+  # Verify ACTIVE filter also works with uppercase.
+  - do:
+      aosc.list:
+        status: ACTIVE
+  - is_true: migrations
+  - match: { truncated: false }
+
+  # Cleanup — cancel the migration we started.
+  - do:
+      aosc.cancel:
+        index: list-validation-src
+  - match: { accepted: true }

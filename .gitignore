@@ -29,6 +29,9 @@ nbactions.xml
 build/
 bin/
 
+# release-build staging dir (assembled by the publish workflow, never committed)
+/dist/
+
 # vscode stuff
 .vscode/
 
@@ -67,8 +70,8 @@ testfixtures_shared/
 # VS Code workspace
 *.code-workspace
 
-# Docker build artifact (copied from build/distributions/ during deploy)
-opensearch-docker/opensearch-aosc.zip
+# Docker build artifact (copied into each line's opensearch-docker/ during deploy)
+**/opensearch-docker/opensearch-aosc.zip
 
 # Benchmark results (machine-specific, not reproducible)
 benchmarks/results/*
@@ -79,6 +82,5 @@ benchmarks/results/*
 __pycache__/
 *.pyc
 site/
-opensearch-docker/opensearch-aosc.zip
 # direnv local env (per-developer, not committed)
 .envrc

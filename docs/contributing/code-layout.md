@@ -1,20 +1,6 @@
 # Code Layout
 
-AOSC source lives under `aosc-plugin/src/main/java/com/atlassian/opensearch/aosc/`.
-
-## Top-Level Directories
-
-| Directory | Purpose |
-|-----------|---------|
-| `aosc-plugin/src/main/java/` | Plugin source. |
-| `aosc-plugin/src/test/` | Unit tests. |
-| `aosc-plugin/src/itTest/` | In-JVM integration tests. |
-| `aosc-plugin/src/smokeTest/` | REST smoke tests. |
-| `aosc-plugin/src/scaleTest/` | Scale validation tests. |
-| `aosc-plugin/src/benchmarkTest/` | Benchmark tests. |
-| `aosc-plugin/src/yamlRestTest/` | YAML REST tests. |
-| `aosc-plugin/opensearch-docker/` | Local Docker cluster. |
-| `docs/` | VitePress documentation. |
+AOSC source lives in one tree per OpenSearch line — `aosc-plugin-os2/` and `aosc-plugin-os3/` — with identical internal structure. Main source is at `src/main/java/com/atlassian/opensearch/aosc/`, with `src/{test,itTest,smokeTest,scaleTest,benchmarkTest,yamlRestTest}/` for each test tier (see [Running Tests](running-tests.md)) and `opensearch-docker/` for the local cluster. Any shared change must be applied to both trees until a shared `core` is extracted.
 
 ## Main Packages
 

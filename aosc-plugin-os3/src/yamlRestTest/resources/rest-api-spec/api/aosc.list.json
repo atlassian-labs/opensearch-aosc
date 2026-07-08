@@ -1,0 +1,28 @@
+{
+  "aosc.list": {
+    "documentation": {
+      "url": "https://github.com/atlassian-labs/opensearch-aosc",
+      "description": "List all AOSC migrations"
+    },
+    "stability": "experimental",
+    "url": {
+      "paths": [
+        {
+          "path": "/_plugins/_aosc/_list",
+          "methods": ["GET"]
+        }
+      ]
+    },
+    "params": {
+      "status": {
+        "type": "string",
+        "description": "Phase filter: 'all' (default) or comma-separated phase names. The pseudo-token 'ACTIVE' expands to all non-terminal phases. Blank input, empty tokens (e.g. 'COMPLETED,,FAILED'), or unknown phase names return HTTP 400."
+      },
+      "size": {
+        "type": "int",
+        "description": "Max number of results (default: 50; values above the internal max of 500 are silently clamped; size <= 0 returns HTTP 400)"
+      }
+    },
+    "body": null
+  }
+}

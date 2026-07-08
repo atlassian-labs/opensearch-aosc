@@ -1,0 +1,5 @@
+grant {
+    // Jackson needs reflection access for JSON serialization/deserialization
+    permission java.lang.RuntimePermission "accessDeclaredMembers";
+    permission java.lang.reflect.ReflectPermission "suppressAccessChecks";
+};

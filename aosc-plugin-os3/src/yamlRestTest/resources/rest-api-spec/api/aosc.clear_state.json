@@ -1,0 +1,35 @@
+{
+  "aosc.clear_state": {
+    "stability": "experimental",
+    "url": {
+      "paths": [
+        {
+          "path": "/_plugins/_aosc/_admin/_clear_state",
+          "methods": ["POST"]
+        }
+      ]
+    },
+    "params": {
+      "dry_run": {
+        "type": "boolean",
+        "description": "Preview what would be cleared without modifying state. Pass dry_run=false to actually clear.",
+        "default": true
+      },
+      "try_close": {
+        "type": "boolean",
+        "description": "Also close in-memory coordinators on the CM node",
+        "default": true
+      },
+      "migration_id": {
+        "type": "string",
+        "description": "Target a specific migration ID; omit to clear all"
+      },
+      "detailed": {
+        "type": "boolean",
+        "description": "Include full cluster state Entry objects in response",
+        "default": false
+      }
+    },
+    "body": null
+  }
+}

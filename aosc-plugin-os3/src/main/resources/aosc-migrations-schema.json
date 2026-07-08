@@ -1,0 +1,24 @@
+{
+  "settings": {
+    "index.number_of_shards": 1,
+    "index.auto_expand_replicas": "0-1",
+    "index.hidden": true
+  },
+  "mappings": {
+    "dynamic": false,
+    "properties": {
+      "migration_id": { "type": "keyword" },
+      "source_index": { "type": "keyword" },
+      "target_index": { "type": "keyword" },
+      "alias": { "type": "keyword" },
+      "phase": { "type": "keyword" },
+      "routing_mode": { "type": "keyword" },
+      "transform_script": { "type": "object", "enabled": false },
+      "options": { "type": "object", "enabled": false },
+      "start_time_millis": { "type": "long" },
+      "last_updated_millis": { "type": "long" },
+      "error_message": { "type": "text", "index": false },
+      "shards": { "type": "object", "enabled": false }
+    }
+  }
+}

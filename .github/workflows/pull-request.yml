@@ -4,7 +4,6 @@ on:
   pull_request:
     branches:
       - develop
-      - 'releases/**'
     types:
       - opened
       - synchronize
@@ -19,23 +18,14 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  resolve:
-    name: Resolve OpenSearch line
-    runs-on: ubuntu-latest
-    outputs:
-      os_line: ${{ steps.line.outputs.os_line }}
-    steps:
-      - uses: actions/checkout@v6
-      - id: line
-        # For pull_request events the target (base) branch determines the line.
-        run: echo "os_line=$(./scripts/resolve-os-line.sh "${GITHUB_BASE_REF}")" >> "$GITHUB_OUTPUT"
-
   validation:
     name: Run full CI
-    needs: resolve
+    # PRs validate both lines at the fast tier = min+max patch of each minor (boundary patches,
+    # all suites). Develop-push and release run full = every patch. See scripts/ci-metadata.py.
     uses: ./.github/workflows/components.yml
     with:
-      os_line: ${{ needs.resolve.outputs.os_line }}
+      os_line: all
+      tier: fast
       include_docs: true
       artifact_retention_days: 7
 

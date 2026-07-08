@@ -19,10 +19,10 @@ This tutorial keeps writes running while AOSC backfills and replays into a targe
 From the repository root:
 
 ```bash
-./gradlew :aosc-plugin:assemble -Dopensearch.version=3.6.0
+./gradlew assemble -PopensearchVersion=3.6.0
 ```
 
-The ZIP is created under `aosc-plugin/build/distributions/`.
+The build prints the ZIP path under `.../build/distributions/` when it finishes.
 
 ## 2. Start the Local Cluster
 
@@ -30,7 +30,7 @@ Use the Gradle Docker tasks from the repository root:
 
 ```bash
 export OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
-./gradlew :aosc-plugin:dockerUp -Dopensearch.version=3.6.0
+./gradlew dockerUp -PopensearchVersion=3.6.0
 ```
 
 Wait for the cluster to become healthy:
@@ -181,5 +181,5 @@ After success, the old source index (`events-v1`) is write-blocked by default. T
 Shut down the local cluster:
 
 ```bash
-./gradlew :aosc-plugin:dockerDown -Dopensearch.version=3.6.0
+./gradlew dockerDown -PopensearchVersion=3.6.0
 ```

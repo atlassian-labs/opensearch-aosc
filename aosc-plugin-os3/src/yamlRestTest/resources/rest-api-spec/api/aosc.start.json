@@ -1,0 +1,27 @@
+{
+  "aosc.start": {
+    "documentation": {
+      "url": "https://github.com/atlassian-labs/opensearch-aosc",
+      "description": "Start an AOSC migration"
+    },
+    "stability": "experimental",
+    "url": {
+      "paths": [
+        {
+          "path": "/_plugins/_aosc/{index}/_start",
+          "methods": ["POST"],
+          "parts": {
+            "index": {
+              "type": "string",
+              "description": "The source index to migrate"
+            }
+          }
+        }
+      ]
+    },
+    "body": {
+      "description": "Migration configuration including target index, alias, optional transform script (inline or stored, with optional script_context), and options (doc_count_tolerance, validation_query, etc.)",
+      "required": true
+    }
+  }
+}

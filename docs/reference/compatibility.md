@@ -1,41 +1,39 @@
+<script setup>
+import { data } from "../.vitepress/data/compatibility.data.mts";
+</script>
+
 # Compatibility
 
 AOSC has two version axes:
 
-- **AOSC version**: the plugin release version, such as `0.1.0`.
-- **OpenSearch line**: the OpenSearch major line the artifact targets, such as `os2` or `os3`.
+- **AOSC version**: the plugin release version, such as `0.1.0`. A single version supports both OpenSearch lines.
+- **OpenSearch line**: the OpenSearch major line an individual artifact targets, such as `os2` or `os3`.
 
-Release artifacts are built per supported OpenSearch minor because OpenSearch plugins are loaded with version compatibility checks. Documentation is versioned by exact AOSC patch version plus OpenSearch major line, for example `/0.1.0-os2/` and `/0.1.0-os3/`.
+`develop` builds both lines, and each AOSC version is released once (tagged `v<version>`) with a ZIP per supported OpenSearch minor across both lines, because OpenSearch plugins are loaded with version compatibility checks. Documentation is versioned by AOSC version only, for example `/0.1.0/`.
 
-## Current OpenSearch 3.x Line
+The tables below are generated at docs-build time from `release/os2.properties` and `release/os3.properties` (the single source of truth), so they always match what this version of AOSC actually builds and validates.
 
-| Field | Value |
-| --- | --- |
-| Release branch | `releases/3.x` |
-| AOSC version | `0.1.0` |
-| Documentation version | `0.1.0-os3` |
-| Primary OpenSearch version | `3.6.0` |
-| Release ZIP minors | `3.1`, `3.3`, `3.5`, `3.6` |
-| CI test versions | `3.1.0`, `3.3.0`, `3.5.0`, `3.6.0` |
-| Java version | `21` |
+<div v-for="line in data.lines" :key="line.line">
 
-## Current OpenSearch 2.x Line
+<h2>OpenSearch {{ line.display }} line</h2>
 
-| Field | Value |
-| --- | --- |
-| Release branch | `releases/2.x` |
-| AOSC version | `0.1.0` |
-| Documentation version | `0.1.0-os2` |
-| Primary OpenSearch version | `2.19.0` |
-| Release ZIP minors | `2.15`, `2.17`, `2.19` |
-| CI test versions | `2.15.0`, `2.17.0`, `2.17.1`, `2.19.0`, `2.19.3` |
-| Java version | `11` |
+<table>
+  <tbody>
+    <tr><td>Primary OpenSearch version</td><td><code>{{ line.primaryVersion }}</code></td></tr>
+    <tr><td>Shipped minors (one ZIP each)</td><td>{{ line.shippedMinors.join(", ") }}</td></tr>
+    <tr><td>Validated versions (CI)</td><td>{{ line.validatedVersions.join(", ") }}</td></tr>
+    <tr><td>Java version</td><td>{{ line.javaVersion }}</td></tr>
+    <tr><td>Gradle version</td><td>{{ line.gradleVersion }}</td></tr>
+  </tbody>
+</table>
+
+</div>
 
 The ZIP name includes the OpenSearch minor it was built for:
 
 ```text
-opensearch-aosc-0.1.0-opensearch-3.6.zip
-opensearch-aosc-0.1.0-opensearch-2.19.zip
+opensearch-aosc-0.1.0-os3.6.zip
+opensearch-aosc-0.1.0-os2.19.zip
 ```
 
 Use the ZIP matching your OpenSearch minor. A `3.6` ZIP is intended for the `3.6.x` patch line, and a `2.19` ZIP is intended for the `2.19.x` patch line, unless a release note says otherwise.

@@ -2,12 +2,15 @@
 #
 # Stress-run a Gradle test task N times and aggregate results.
 #
-# Usage: ./scripts/stress-run.sh <gradle-task> <nruns> [--tests <filter>]
+# The OpenSearch version selects the line/module, so you MUST pass -PopensearchVersion=<v>
+# (or set it in ~/.gradle/gradle.properties). Tasks are unqualified — no :aosc-plugin: prefix.
+#
+# Usage: ./scripts/stress-run.sh <gradle-task> <nruns> [-PopensearchVersion=<v>] [--tests <filter>]
 #
 # Examples:
-#   ./scripts/stress-run.sh itTest 10
-#   ./scripts/stress-run.sh smokeTest2Nodes 5 --tests "*.SmokeMigrationCoreIT"
-#   ./scripts/stress-run.sh scaleTest2Nodes 3
+#   ./scripts/stress-run.sh itTest 10 -PopensearchVersion=3.6.0
+#   ./scripts/stress-run.sh smokeTest2Nodes 5 -PopensearchVersion=2.19.0 --tests "*.SmokeMigrationCoreIT"
+#   ./scripts/stress-run.sh scaleTest 3 -PopensearchVersion=3.6.0
 #
 # Output: merged test results in build/stress-results/ with per-test pass/fail/flaky stats.
 
@@ -18,8 +21,8 @@ nruns=$2
 shift 2
 extra_args="$*"
 
-results_dir="aosc-plugin/build/stress-results"
-tmp_dir="aosc-plugin/build/stress-results/runs"
+results_dir="build/stress-results"
+tmp_dir="build/stress-results/runs"
 rm -rf "$results_dir"
 mkdir -p "$tmp_dir"
 
@@ -33,9 +36,9 @@ for i in $(seq 1 "$nruns"); do
   echo "╚══════════════════════════════════════════╝"
   echo ""
 
-  rm -rf aosc-plugin/build/test-results
+  rm -rf aosc-plugin-os*/build/test-results
 
-  if ./gradlew --no-daemon ":aosc-plugin:$task" $extra_args 2>&1; then
+  if ./gradlew --no-daemon "$task" $extra_args 2>&1; then
     echo "✅ Run $i: PASSED"
     pass_count=$((pass_count + 1))
   else
@@ -43,10 +46,10 @@ for i in $(seq 1 "$nruns"); do
     fail_count=$((fail_count + 1))
   fi
 
-  # Collect XML results from wherever Gradle put them
+  # Collect XML results from whichever line's module built (only one participates per run)
   run_dir="$tmp_dir/run-$i"
   mkdir -p "$run_dir"
-  find aosc-plugin/build -path "*/test-results/*/*.xml" -exec cp {} "$run_dir/" \; 2>/dev/null
+  find aosc-plugin-os*/build -path "*/test-results/*/*.xml" -exec cp {} "$run_dir/" \; 2>/dev/null
 done
 
 echo ""

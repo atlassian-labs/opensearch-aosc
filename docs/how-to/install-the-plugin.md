@@ -4,44 +4,43 @@ Build AOSC for the OpenSearch version you run, then install the ZIP on every clu
 
 ## Supported Versions
 
-The build currently declares support for:
+AOSC supports OpenSearch 2.x and 3.x. The exact supported minors and validated patches are on the [Compatibility reference](../reference/compatibility.md), which is generated from the release manifests (`release/os2.properties` / `release/os3.properties`) so it never drifts.
 
-- OpenSearch 2.x: `2.15.0`, `2.17.0`, `2.19.0`
-- OpenSearch 3.x: `3.1.0`, `3.3.0`, `3.5.0`, `3.6.0`
-
-Patch releases within the same minor may be compatible because the plugin descriptor is rewritten to a `~X.Y.Z` semver range. Test the exact OpenSearch version before using it. See [Compatibility](../reference/compatibility.md) for the current build and test matrix.
+Patch releases within the same minor may be compatible because the plugin descriptor is rewritten to a `~X.Y.Z` semver range. Test the exact OpenSearch version before using it.
 
 ## Build from Source
 
 ```bash
 git clone https://github.com/atlassian-labs/opensearch-aosc.git
 cd opensearch-aosc
-./gradlew :aosc-plugin:assemble -Dopensearch.version=3.6.0
+./gradlew assemble -PopensearchVersion=3.6.0
 ```
 
-Output:
+Most supported versions build on the bundled Gradle wrapper. A few of the newest OpenSearch versions require a newer Gradle (e.g. OpenSearch 3.7 needs Gradle 9.4.1) — before building one of those, run `./scripts/set-gradle.sh <version>` to point the wrapper at the right Gradle (`--reset` restores the default). See [Development Environment](../contributing/dev-environment.md#gradle-version-per-opensearch-version).
+
+The build prints the ZIP path when it finishes:
 
 ```text
-aosc-plugin/build/distributions/opensearch-aosc-<version>.zip
+.../build/distributions/opensearch-aosc-<version>.zip
 ```
 
-Repeat the build command with a different `-Dopensearch.version=...` when you need a ZIP for another supported OpenSearch minor.
+Repeat the build command with a different `-PopensearchVersion=...` when you need a ZIP for another supported OpenSearch minor.
 
 ## Install from GitHub Release
 
-Published releases attach one ZIP per supported OpenSearch minor:
+Each AOSC version is a single GitHub release tagged `v<aosc-version>`. That release attaches one ZIP per supported OpenSearch minor, across both lines:
 
 ```text
-opensearch-aosc-<aosc-version>-opensearch-<opensearch-minor>.zip
+opensearch-aosc-<aosc-version>-os<opensearch-minor>.zip
 ```
 
-For example, an AOSC `0.1.0` release for OpenSearch `3.6.x` uses:
+For example, the `v0.1.0` release includes a ZIP for OpenSearch `3.6.x`:
 
 ```text
-opensearch-aosc-0.1.0-opensearch-3.6.zip
+opensearch-aosc-0.1.0-os3.6.zip
 ```
 
-Download the ZIP matching your OpenSearch minor, verify it against `SHA256SUMS`, then install that ZIP on each node.
+Open the `v<aosc-version>` release, download the ZIP matching your OpenSearch minor, verify it against the release's `SHA256SUMS`, then install that ZIP on each node.
 
 ## Install on Each Node
 
@@ -73,6 +72,6 @@ A cluster with no migrations returns an empty `migrations` array.
 | Symptom | Check |
 |---------|-------|
 | Plugin version mismatch | Run `_cat/plugins` on all nodes and reinstall the same ZIP everywhere. |
-| `opensearch.version` build error | Pass `-Dopensearch.version=...` or export `OPENSEARCH_VERSION`. |
+| `opensearchVersion is required` build error | Pass `-PopensearchVersion=...` or set it in `~/.gradle/gradle.properties`. |
 | Plugin does not load | Check OpenSearch logs for version mismatch, permissions, or dependency errors. |
 | REST action missing | Confirm every relevant node has the plugin installed and was restarted. |

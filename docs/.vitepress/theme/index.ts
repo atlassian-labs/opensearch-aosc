@@ -106,9 +106,11 @@ function versionTitle(version: DocsVersion): string {
 
 function versionSubtitle(version: DocsVersion): string {
   if (version.version === "develop") return "Unreleased docs";
+  // Legacy per-line docs versions (e.g. 0.1.0-os2) — kept for backward compatibility.
   const match = version.version.match(/^(.*)-os(\d+)$/);
-  if (!match) return version.version;
-  return `OpenSearch ${match[2]}.x`;
+  if (match) return `OpenSearch ${match[2]}.x`;
+  // New model: one release covers both lines; avoid repeating the version as its own subtitle.
+  return "Release";
 }
 
 function forceDocumentNavigation(link: HTMLAnchorElement) {

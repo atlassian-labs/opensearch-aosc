@@ -12,22 +12,17 @@ For a visual walkthrough of how writes, shard workers, and alias cutover behave 
 
 ## Supported OpenSearch Versions
 
-AOSC supports separate release lines for OpenSearch 2.x and 3.x:
+`develop` builds both OpenSearch lines (2.x on Java 11, 3.x on Java 21); the OpenSearch version you pass selects the line. The exact supported minors and validated patches are declared in `release/os2.properties` / `release/os3.properties` and rendered on the [Compatibility reference](docs/reference/compatibility.md) — this README does not restate them, so it can't drift.
 
-| OpenSearch line | Branch | Supported build versions | Java |
-| --- | --- | --- | --- |
-| 2.x | `releases/2.x` | `2.15.0`, `2.17.0`, `2.19.0` | 11 |
-| 3.x | `develop`, `releases/3.x` | `3.1.0`, `3.3.0`, `3.5.0`, `3.6.0` | 21 |
-
-Build the plugin with the exact target OpenSearch version. The current `develop` default is OpenSearch 3.x:
+Build with the exact target OpenSearch version — the build selects the matching line automatically, so tasks take no extra qualifier:
 
 ```bash
-./gradlew :aosc-plugin:assemble -Dopensearch.version=3.6.0
+./gradlew assemble -PopensearchVersion=3.6.0
 ```
 
 The generated plugin descriptor uses a patch-compatible semver range for the selected minor version. See [Install the Plugin](docs/how-to/install-the-plugin.md) for details.
 
-The AOSC project version is tracked in `version.properties`. Release branches use that file as the authoritative release version; `develop` uses a non-release development version. Release tags include both the AOSC version and the OpenSearch major compatibility line, for example `aosc-0.1.0-os2` and `aosc-0.1.0-os3`. See [Releases](docs/contributing/releases.md).
+`develop` is the source of truth; its `version.properties` stays a non-release `0.0.0-dev`. Releases are cut from `develop` and are tag-driven: each release is tagged `v<version>` and contains a per-minor plugin zip for both lines. See [Releases](docs/contributing/releases.md).
 
 ## Quick Start
 
@@ -77,51 +72,51 @@ For architecture details, see [Architecture Overview](docs/concepts/architecture
 
 ## Build and Test
 
-The root build requires `OPENSEARCH_VERSION` or `-Dopensearch.version`.
+The build requires `-PopensearchVersion`. Set it per invocation, or once in `~/.gradle/gradle.properties` (`opensearchVersion=3.6.0`) so a bare `./gradlew` and IntelliJ import resolve it. The version selects the OpenSearch line.
 
 ```bash
-export OPENSEARCH_VERSION=3.6.0
-
-./gradlew :aosc-plugin:unitTest
-./gradlew :aosc-plugin:fastCheck
-./gradlew :aosc-plugin:yamlRestTest
-./gradlew :aosc-plugin:itTest
+./gradlew fastCheck -PopensearchVersion=3.6.0
+./gradlew yamlRestTest -PopensearchVersion=3.6.0
+./gradlew itTest -PopensearchVersion=3.6.0
 ```
 
-Useful tasks:
+Most versions build on the bundled Gradle wrapper; a few newest OpenSearch versions need a newer Gradle (e.g. 3.7 → Gradle 9.4.1) — run `./scripts/set-gradle.sh <version>` first. See [Development Environment](docs/contributing/dev-environment.md#gradle-version-per-opensearch-version).
+
+Useful tasks (all run with `-PopensearchVersion=<version>`):
 
 | Task | Purpose |
 |------|---------|
-| `:aosc-plugin:unitTest` | Unit tests only. |
-| `:aosc-plugin:fastCheck` | Unit tests plus compile/precommit checks wired by the OpenSearch build. |
-| `:aosc-plugin:yamlRestTest` | YAML REST API smoke coverage. |
-| `:aosc-plugin:itTest` | In-JVM OpenSearch integration tests. |
-| `:aosc-plugin:smokeTest` | REST smoke tests against a forked or Docker-backed cluster, selected by `-Dcluster.topology`. |
+| `fastCheck` | Compile + unit tests + precommit (primary loop). |
+| `yamlRestTest` | YAML REST coverage on a real node. |
+| `itTest` | In-JVM OpenSearch integration tests. |
+| `smokeTest` | REST smoke tests against a forked or Docker-backed cluster, selected by `-Dcluster.topology`. |
 
 See [Running Tests](docs/contributing/running-tests.md) for the test matrix.
 
 ## Local Docker Cluster
 
-The Docker test cluster lives under `aosc-plugin/opensearch-docker`. Prefer the Gradle wrappers from the repository root:
+The Docker test cluster lives under the selected line's source tree (`aosc-plugin-os<N>/opensearch-docker`). Prefer the Gradle wrappers from the repository root:
 
 ```bash
 export OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
 
-./gradlew :aosc-plugin:dockerUp -Dopensearch.version=3.6.0
+./gradlew dockerUp -PopensearchVersion=3.6.0
 curl -s http://localhost:9200/_cluster/health | jq '.'
-./gradlew :aosc-plugin:dockerDown -Dopensearch.version=3.6.0
+./gradlew dockerDown -PopensearchVersion=3.6.0
 ```
 
 ## Repository Layout
 
 ```text
 opensearch-aosc/
-|-- aosc-plugin/        # Plugin source, tests, packaging, and Docker test cluster
+|-- aosc-plugin-os2/    # OpenSearch 2.x plugin source, tests, packaging, Docker cluster
+|-- aosc-plugin-os3/    # OpenSearch 3.x plugin source, tests, packaging, Docker cluster
 |-- docs/               # VitePress documentation
-|-- gradle/             # Gradle wrapper and formatter config
+|-- gradle/             # Gradle wrapper, formatter config, shared aosc-plugin.gradle
+|-- release/            # Per-line build manifests (os2.properties, os3.properties)
 |-- scripts/            # Public helper scripts
 |-- build.gradle        # Root build configuration
-`-- settings.gradle     # Gradle project layout
+`-- settings.gradle     # Version knob, manifest validation, line selection
 ```
 
 ## Documentation

@@ -7,16 +7,8 @@
 
 buildscript {
     ext {
-        opensearch_version = System.getProperty("opensearch.version") ?: System.getenv("OPENSEARCH_VERSION")
-    }
-    if (!opensearch_version) {
-        throw new GradleException(
-            "opensearch.version is required. Either:\n" +
-            "  export OPENSEARCH_VERSION=2.19.0           (shell profile)\n" +
-            "  -Dopensearch.version=2.19.0                (per-invocation)\n" +
-            "\n" +
-            "For IntelliJ setup, see 'IntelliJ IDEA Setup' section in README.md"
-        )
+        // Resolved + validated once in settings.gradle (single source), shared via gradle.ext.
+        opensearch_version = gradle.ext.aoscOsVersion
     }
 
     repositories {
@@ -36,5 +28,9 @@ def aoscVersionProperties = new Properties()
 file("version.properties").withInputStream { aoscVersionProperties.load(it) }
 
 allprojects {
-    version = aoscVersionProperties.getProperty("aosc.version")
+    // aoscVersion may be overridden at release time via -PaoscVersion (see release commit).
+    version = findProperty("aoscVersion") ?: aoscVersionProperties.getProperty("aoscVersion")
+    // Selected OpenSearch version, resolved once in settings.gradle and shared to each module's
+    // applied build script (gradle/aosc-plugin.gradle reads project.opensearch_version).
+    ext.opensearch_version = gradle.ext.aoscOsVersion
 }

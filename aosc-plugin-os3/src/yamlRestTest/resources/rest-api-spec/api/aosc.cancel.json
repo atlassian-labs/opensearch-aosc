@@ -1,0 +1,24 @@
+{
+  "aosc.cancel": {
+    "documentation": {
+      "url": "https://github.com/atlassian-labs/opensearch-aosc",
+      "description": "Cancel an active AOSC migration"
+    },
+    "stability": "experimental",
+    "url": {
+      "paths": [
+        {
+          "path": "/_plugins/_aosc/{index}/_cancel",
+          "methods": ["POST"],
+          "parts": {
+            "index": {
+              "type": "string",
+              "description": "The source index to cancel migration for"
+            }
+          }
+        }
+      ]
+    },
+    "body": null
+  }
+}

@@ -1,0 +1,80 @@
+---
+"Start accepts validation_query in options":
+  - do:
+      indices.create:
+        index: vq-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: vq-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: vq-source
+        body:
+          target_index: "vq-target"
+          alias: "vq-alias"
+          options:
+            validation_query:
+              match_all: {}
+  - match: { accepted: true }
+
+---
+"Start accepts validation_query with term query":
+  - do:
+      indices.create:
+        index: vq-term-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: vq-term-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: vq-term-source
+        body:
+          target_index: "vq-term-target"
+          alias: "vq-term-alias"
+          options:
+            validation_query:
+              term:
+                status: "active"
+  - match: { accepted: true }
+
+---
+"Start accepts null validation_query (omitted)":
+  - do:
+      indices.create:
+        index: vq-null-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: vq-null-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: vq-null-source
+        body:
+          target_index: "vq-null-target"
+          alias: "vq-null-alias"
+          options:
+            doc_count_tolerance: 5
+  - match: { accepted: true }

@@ -33,13 +33,12 @@ Before sending a pull request:
 Run at least the core checks for the OpenSearch version you changed against:
 
 ```bash
-export OPENSEARCH_VERSION=3.6.0
-./gradlew :aosc-plugin:fastCheck
-./gradlew :aosc-plugin:yamlRestTest
-./gradlew :aosc-plugin:itTest
+./gradlew fastCheck -PopensearchVersion=3.6.0
+./gradlew yamlRestTest -PopensearchVersion=3.6.0
+./gradlew itTest -PopensearchVersion=3.6.0
 ```
 
-Some changes need broader validation, such as `:aosc-plugin:smokeTest`, `:aosc-plugin:scaleTest`, or `:aosc-plugin:benchmark`. See [Running Tests](docs/contributing/running-tests.md).
+Change the version to build the other line (e.g. `-PopensearchVersion=2.19.0` for os2). Any shared change must be applied to both `aosc-plugin-os2/src` and `aosc-plugin-os3/src` until a shared `core` is extracted. Some changes need broader validation, such as `smokeTest`, `scaleTest`, or `benchmark`. See [Running Tests](docs/contributing/running-tests.md).
 
 GitHub Actions runs the public CI matrix for pull requests. Maintainers may ask for additional local or maintainer-run validation for compatibility-sensitive changes.
 
@@ -84,8 +83,8 @@ Keep the first line short and use imperative mood, for example `fix(worker): rel
 Java formatting is enforced with Spotless and the OpenSearch formatter profile.
 
 ```bash
-./gradlew :aosc-plugin:spotlessApply
-./gradlew :aosc-plugin:spotlessCheck
+./gradlew spotlessApply
+./gradlew spotlessCheck
 ```
 
 Rules enforced by the build include no wildcard imports and the repository import order.

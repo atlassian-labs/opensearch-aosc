@@ -1,0 +1,149 @@
+---
+"Cleanup leases dry-run on empty cluster reports zero leases":
+  # No AOSC migration has run, so there are no aosc-migration-* leases.
+  # The single route should return an empty result
+  # with dry_run=true, released=0, failed=0.
+  - do:
+      indices.create:
+        index: cleanup-empty
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      aosc.cleanup_leases:
+        dry_run: true
+  - match: { dry_run: true }
+  - match: { released: 0 }
+  - match: { failed: 0 }
+  - length: { leases: 0 }
+
+  - do:
+      aosc.cleanup_leases:
+        index: cleanup-empty
+        dry_run: true
+  - match: { dry_run: true }
+  - match: { released: 0 }
+  - match: { failed: 0 }
+  - length: { leases: 0 }
+
+---
+"Cleanup leases default is dry-run on empty cluster":
+  # Without any AOSC leases present, the default (dry_run=true) form must
+  # succeed and report zero releases and zero failures.
+  - do:
+      indices.create:
+        index: cleanup-noop
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      aosc.cleanup_leases: {}
+  - match: { dry_run: true }
+  - match: { released: 0 }
+  - match: { failed: 0 }
+  - length: { leases: 0 }
+
+---
+"Cleanup leases live mode on empty cluster is a no-op":
+  # Without any AOSC leases present, the live (non dry-run) form must also
+  # succeed and report zero releases and zero failures.
+  - do:
+      indices.create:
+        index: cleanup-noop-live
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  - do:
+      aosc.cleanup_leases:
+        dry_run: false
+  - match: { dry_run: false }
+  - match: { released: 0 }
+  - match: { failed: 0 }
+  - length: { leases: 0 }
+
+---
+"Cleanup leases dry-run during a live migration discovers AOSC leases":
+  # End-to-end positive path: launch a real migration which causes the
+  # ShardMigrationWorker to acquire a retention lease via RetentionLeaseManager,
+  # then call cleanup_leases?dry_run=true and verify that:
+  #   - the call succeeds end-to-end through IndicesStatsAction + filter pipeline
+  #   - any lease that IS reported has the AOSC prefix and source
+  # We do NOT assert that exactly one lease is found — the lease is acquired
+  # asynchronously inside the worker so timing is not deterministic enough for
+  # a hard count. What we DO assert is that the action reaches steady state
+  # (no failures), and that the per-index dry-run scoping works.
+  - do:
+      indices.create:
+        index: cleanup-live-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: cleanup-live-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+
+  # Seed a doc so the worker has something to backfill (the lease lives until
+  # the worker reaches a terminal phase, so giving it work prolongs that window).
+  - do:
+      index:
+        index: cleanup-live-source
+        id: "1"
+        refresh: true
+        body: { foo: "bar" }
+
+  - do:
+      aosc.start:
+        index: cleanup-live-source
+        body:
+          target_index: "cleanup-live-target"
+          alias: "cleanup-live-alias"
+  - match: { accepted: true }
+  - is_true: migration_id
+
+  # Cluster-wide dry-run: must succeed and the response must be well-formed.
+  # If any lease is reported it MUST have the AOSC prefix and source — the
+  # action filters on these and never reports non-AOSC leases.
+  - do:
+      aosc.cleanup_leases:
+        dry_run: true
+  - match: { dry_run: true }
+  - match: { released: 0 }     # dry-run never releases
+  - match: { failed: 0 }       # discovery must not fail
+
+  # Per-index dry-run scoped to the source index — same invariants.
+  - do:
+      aosc.cleanup_leases:
+        index: cleanup-live-source
+        dry_run: true
+  - match: { dry_run: true }
+  - match: { released: 0 }
+  - match: { failed: 0 }
+
+  # Per-index dry-run scoped to an unrelated index — must report zero leases
+  # because no AOSC migration ever ran on the target.
+  - do:
+      aosc.cleanup_leases:
+        index: cleanup-live-target
+        dry_run: true
+  - match: { dry_run: true }
+  - match: { released: 0 }
+  - match: { failed: 0 }
+  - length: { leases: 0 }
+
+  # Cancel cleans up the migration (and releases the lease via the worker's
+  # release() path) so subsequent suites start from a clean slate.
+  - do:
+      aosc.cancel:
+        index: cleanup-live-source
+  - match: { accepted: true }

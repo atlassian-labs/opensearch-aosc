@@ -4,9 +4,14 @@ on:
   workflow_call:
     inputs:
       os_line:
-        description: OpenSearch compatibility line
+        description: OpenSearch compatibility line (os2 | os3 | all)
         required: false
         default: os3
+        type: string
+      tier:
+        description: Test tier — fast (fastCheck + yamlRestTest) or full (all suites)
+        required: false
+        default: full
         type: string
       include_docs:
         description: Build documentation as part of validation
@@ -18,6 +23,11 @@ on:
         required: false
         default: 7
         type: number
+      ref:
+        description: "Git ref/SHA to check out; empty uses the triggering ref"
+        required: false
+        default: ''
+        type: string
 
 permissions:
   contents: read
@@ -30,17 +40,23 @@ jobs:
       validation_matrix_json: ${{ steps.matrix.outputs.validation_matrix_json }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
       - id: matrix
-        run: ./scripts/github-ci-matrix.sh "${{ inputs.os_line }}" --github-output
+        env:
+          VALIDATION_TIER: ${{ inputs.tier }}
+        run: ./scripts/ci-metadata.py "${{ inputs.os_line }}" --github-output
 
   docs:
-    name: Docs
+    name: Docs build
     needs: metadata
     if: inputs.include_docs
     runs-on: ubuntu-latest
     timeout-minutes: 15
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -61,11 +77,15 @@ jobs:
         include: ${{ fromJSON(needs.metadata.outputs.validation_matrix_json) }}
     steps:
       - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
       - uses: actions/setup-java@v5
         with:
           distribution: temurin
-          java-version: ${{ matrix.java_version }}
+          java-version: ${{ matrix.build_java_version }}
           cache: gradle
+      - name: Select Gradle for the OpenSearch version
+        run: ./scripts/set-gradle.sh "${{ matrix.opensearch_version }}"
       - name: Pre-fetch Gradle
         run: ./scripts/ensure-gradle.sh
       - name: Run ${{ matrix.label }}
@@ -74,7 +94,7 @@ jobs:
           GRADLE_ARGS: ${{ matrix.gradle_args }}
           GRADLE_TASK: ${{ matrix.gradle_task }}
         run: |
-          args=("-Dopensearch.version=${OPENSEARCH_VERSION}")
+          args=("-PopensearchVersion=${OPENSEARCH_VERSION}")
           if [[ -n "${GRADLE_ARGS}" ]]; then
             read -r -a extra_args <<< "${GRADLE_ARGS}"
             args+=("${extra_args[@]}")
@@ -83,10 +103,10 @@ jobs:
       - uses: actions/upload-artifact@v7
         if: failure()
         with:
-          name: validation-${{ matrix.id }}-${{ matrix.opensearch_version }}-${{ github.run_attempt }}
+          name: validation-${{ matrix.os_line }}-${{ matrix.id }}-${{ matrix.opensearch_version }}-${{ github.run_attempt }}
           path: |
-            aosc-plugin/build/reports/**
-            aosc-plugin/build/test-results/**
+            aosc-plugin-*/build/reports/**
+            aosc-plugin-*/build/test-results/**
           if-no-files-found: ignore
           retention-days: ${{ inputs.artifact_retention_days }}
 

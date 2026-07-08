@@ -1,0 +1,132 @@
+---
+"Test that the plugin is loaded in OpenSearch":
+  - do:
+      cat.plugins:
+        local: true
+        h: component
+  - match:
+      $body: /^opensearch-aosc\n$/
+
+---
+"Test get status returns 404 for unknown index":
+  - do:
+      catch: missing
+      aosc.status:
+        index: nonexistent-index
+
+---
+"Test migration lifecycle - start, status, list, cancel":
+  # Start
+  - do:
+      indices.create:
+        index: yaml-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: yaml-source
+        body:
+          target_index: "yaml-target"
+          alias: "yaml-alias"
+  - match: { accepted: true }
+  - is_true: migration_id
+
+  # Status
+  - do:
+      aosc.status:
+        index: yaml-source
+  - is_true: migration_id
+  - is_true: phase
+
+  # List — verify new envelope fields are present.
+  # `migrations` is the summary array; `truncated` and `active_count` are always
+  # serialized in the response (primitive booleans/ints, never null).
+  # Note: active_count may be 0 if the migration completes before the list call
+  # (single-shard, zero-doc migration can finish near-instantly), so we only
+  # assert the field exists and is a non-negative integer.
+  - do:
+      aosc.list: {}
+  - is_true: migrations
+  - match: { truncated: false }
+  - gte: { active_count: 0 }
+
+  # Cancel
+  - do:
+      aosc.cancel:
+        index: yaml-source
+  - match: { accepted: true }
+  - is_true: phase
+
+---
+"Test start accepts remove_source_write_block_on_success option":
+  - do:
+      indices.create:
+        index: yaml-rwb-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-rwb-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: yaml-rwb-source
+        body:
+          target_index: "yaml-rwb-target"
+          alias: "yaml-rwb-alias"
+          options:
+            remove_source_write_block_on_success: false
+  - match: { accepted: true }
+  - is_true: migration_id
+
+  # Cancel so the test is self-contained.
+  - do:
+      aosc.cancel:
+        index: yaml-rwb-source
+  - match: { accepted: true }
+
+---
+"Test start accepts remove_source_write_block_on_success true":
+  - do:
+      indices.create:
+        index: yaml-rwb2-source
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      indices.create:
+        index: yaml-rwb2-target
+        body:
+          settings:
+            number_of_shards: 1
+            number_of_replicas: 0
+  - do:
+      aosc.start:
+        index: yaml-rwb2-source
+        body:
+          target_index: "yaml-rwb2-target"
+          alias: "yaml-rwb2-alias"
+          options:
+            remove_source_write_block_on_success: true
+  - match: { accepted: true }
+  - is_true: migration_id
+
+  - do:
+      aosc.cancel:
+        index: yaml-rwb2-source
+  - match: { accepted: true }

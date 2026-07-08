@@ -13,12 +13,14 @@ Describe the change and why it is needed.
 List the commands you ran, for example:
 
 ```bash
-./gradlew :aosc-plugin:fastCheck -Dopensearch.version=3.6.0
-./gradlew :aosc-plugin:yamlRestTest -Dopensearch.version=3.6.0
-./gradlew :aosc-plugin:itTest -Dopensearch.version=3.6.0
-./gradlew :aosc-plugin:smokeTest2Nodes -Dopensearch.version=3.6.0
+./gradlew fastCheck -PopensearchVersion=3.6.0
+./gradlew yamlRestTest -PopensearchVersion=3.6.0
+./gradlew itTest -PopensearchVersion=3.6.0
+./gradlew smokeTest2Nodes -PopensearchVersion=3.6.0
 npm run docs:build
 ```
+
+The OpenSearch version selects the line (2.x or 3.x); change it (e.g. `-PopensearchVersion=2.19.0`) to validate the other line.
 
 ## Notes for reviewers
 

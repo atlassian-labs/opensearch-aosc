@@ -13,22 +13,13 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
-  resolve:
-    name: Resolve OpenSearch line
-    runs-on: ubuntu-latest
-    outputs:
-      os_line: ${{ steps.line.outputs.os_line }}
-    steps:
-      - uses: actions/checkout@v6
-      - id: line
-        run: echo "os_line=$(./scripts/resolve-os-line.sh "${GITHUB_REF_NAME}")" >> "$GITHUB_OUTPUT"
-
   validation:
     name: Run full CI
-    needs: resolve
+    # develop is the single source for both OpenSearch lines — validate both at the full tier.
     uses: ./.github/workflows/components.yml
     with:
-      os_line: ${{ needs.resolve.outputs.os_line }}
+      os_line: all
+      tier: full
       include_docs: true
       artifact_retention_days: 7
 

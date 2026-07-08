@@ -10,6 +10,7 @@ import type { DefaultTheme } from "vitepress";
 
 const docsRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), "..");
 const docsBase = process.env.DOCS_BASE || "/opensearch-aosc/";
+const siteOrigin = process.env.DOCS_ORIGIN || "https://atlassian-labs.github.io";
 
 function sidebar(): DefaultTheme.Sidebar {
   return [
@@ -178,6 +179,9 @@ export default defineConfig({
   title: "AOSC",
   description: "Automatic Online Schema Change for OpenSearch",
   base: docsBase,
+  sitemap: {
+    hostname: `${siteOrigin}${docsBase}`,
+  },
   cleanUrls: true,
   lastUpdated: true,
   ignoreDeadLinks: "localhostLinks",

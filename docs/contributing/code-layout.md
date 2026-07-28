@@ -1,6 +1,6 @@
 # Code Layout
 
-AOSC source lives in one tree per OpenSearch line — `aosc-plugin-os2/` and `aosc-plugin-os3/` — with identical internal structure. Main source is at `src/main/java/com/atlassian/opensearch/aosc/`, with `src/{test,itTest,smokeTest,scaleTest,benchmarkTest,yamlRestTest}/` for each test tier (see [Running Tests](running-tests.md)) and `opensearch-docker/` for the local cluster. Any shared change must be applied to both trees until a shared `core` is extracted.
+AOSC source lives in a single `aosc-plugin/` module. Shared code is at `src/main/java/com/atlassian/opensearch/aosc/`; files that differ between OpenSearch 2.x and 3.x live in `src/main/java-2x/` and `src/main/java-3x/`. Gradle selects the matching compat directory based on `-PopensearchVersion`. The same pattern applies to test source sets (`src/{test,itTest,smokeTest,scaleTest,benchmarkTest,yamlRestTest}/`). See [Running Tests](running-tests.md) for the test tiers and `opensearch-docker/` for the local cluster.
 
 ## Main Packages
 

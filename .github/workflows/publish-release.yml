@@ -97,7 +97,7 @@ jobs:
           ./scripts/gradle-with-retry.sh ./gradlew --no-daemon bundlePlugin \
             -PopensearchVersion="${OS_VERSION}" -PaoscVersion="${NEXT}"
           MINOR="${OS_VERSION%.*}"
-          SRC="$(ls aosc-plugin-*/build/distributions/opensearch-aosc-${NEXT}.zip)"
+          SRC="$(ls aosc-plugin/build/distributions/opensearch-aosc-${NEXT}.zip)"
           mkdir -p dist
           cp "${SRC}" "dist/opensearch-aosc-${NEXT}-os${MINOR}.zip"
       - uses: actions/upload-artifact@v7

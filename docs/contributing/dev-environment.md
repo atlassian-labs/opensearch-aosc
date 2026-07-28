@@ -70,7 +70,7 @@ curl -s http://localhost:9200/_cluster/health | jq '.'
 
 The compose files live in the selected line's `opensearch-docker/` directory. Prefer the Gradle tasks above because they build the plugin ZIP, copy it into the Docker context, select Compose v1 or v2, wait for health, and remove volumes on shutdown.
 
-If you debug Compose directly, first run `./gradlew dockerCopyPlugin -PopensearchVersion=3.6.0`, then run Compose from `aosc-plugin-os<N>/opensearch-docker/` with `OPENSEARCH_VERSION` (the container image tag) and `OPENSEARCH_INITIAL_ADMIN_PASSWORD` set.
+If you debug Compose directly, first run `./gradlew dockerCopyPlugin -PopensearchVersion=3.6.0`, then run Compose from `aosc-plugin/opensearch-docker/` with `OPENSEARCH_VERSION` (the container image tag) and `OPENSEARCH_INITIAL_ADMIN_PASSWORD` set.
 
 ## Common Setup Issues
 
@@ -84,22 +84,25 @@ If you debug Compose directly, first run `./gradlew dockerCopyPlugin -Popensearc
 
 ## Repository Layout
 
-There is one source tree per OpenSearch line, `aosc-plugin-os2/` and `aosc-plugin-os3/`, with identical internal structure. Only the line matching `-PopensearchVersion` participates in a build.
+A single `aosc-plugin/` module contains shared source and version-specific compat directories. Gradle selects `java-2x/` or `java-3x/` based on `-PopensearchVersion`.
 
 ```text
 opensearch-aosc/
-|-- aosc-plugin-os2/            # OpenSearch 2.x source tree (structure below)
-|-- aosc-plugin-os3/            # OpenSearch 3.x source tree
-|   |-- src/main/java/          # Plugin source
-|   |-- src/test/               # Unit tests
-|   |-- src/itTest/             # In-JVM integration tests
-|   |-- src/smokeTest/          # REST smoke tests
-|   |-- src/scaleTest/          # Scale validation tests
-|   |-- src/benchmarkTest/      # Benchmark tests
-|   |-- src/yamlRestTest/       # YAML REST tests
-|   `-- opensearch-docker/      # Local Docker cluster
-|-- docs/                       # VitePress documentation
-|-- gradle/                     # Wrapper, formatter config, shared aosc-plugin.gradle
-|-- release/                    # Per-line build manifests
-`-- scripts/                    # Public helper scripts
+|-- aosc-plugin/
+|   |-- src/main/java/          # Shared plugin source (both 2.x and 3.x)
+|   |-- src/main/java-2x/       # OpenSearch 2.x-specific source
+|   |-- src/main/java-3x/       # OpenSearch 3.x-specific source
+|   |-- src/test/java/           # Shared unit tests
+|   |-- src/test/java-2x/        # 2.x-specific tests
+|   |-- src/test/java-3x/        # 3.x-specific tests
+|   |-- src/itTest/              # In-JVM integration tests (shared)
+|   |-- src/smokeTest/           # REST smoke tests
+|   |-- src/scaleTest/           # Scale validation tests
+|   |-- src/benchmarkTest/       # Benchmark tests
+|   |-- src/yamlRestTest/        # YAML REST tests
+|   `-- opensearch-docker/       # Local Docker cluster
+|-- docs/                        # VitePress documentation
+|-- gradle/                      # Wrapper, formatter config, shared aosc-plugin.gradle
+|-- release/                     # Per-line build manifests
+`-- scripts/                     # Public helper scripts
 ```

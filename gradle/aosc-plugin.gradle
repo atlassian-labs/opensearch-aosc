@@ -199,9 +199,22 @@ configurations.matching { it.name.startsWith('yamlRestTest') }.configureEach {
 // spotlessCheck runs automatically as part of precommit → fastCheck.
 // ---------------------------------------------------------------------------
 
+// ---------------------------------------------------------------------------
+// Version-specific source directories: each source set gets a java-{2,3}x dir
+// that is compiled alongside the shared java/ dir. Gradle picks the one matching
+// the selected OpenSearch major version.
+// ---------------------------------------------------------------------------
+def compatSuffix = "java-${osMajor}x"
+sourceSets.all { ss ->
+    def compatDir = file("src/${ss.name}/${compatSuffix}")
+    if (compatDir.isDirectory()) {
+        ss.java.srcDir compatDir
+    }
+}
+
 spotless {
     java {
-        target 'src/*/java/**/*.java'
+        target 'src/*/java/**/*.java', "src/*/java-2x/**/*.java", "src/*/java-3x/**/*.java"
 
         licenseHeader '''/*
  * SPDX-License-Identifier: Apache-2.0

@@ -43,5 +43,5 @@ gradle.ext.aoscOsMinor = osv.tokenize('.')[0..1].join('.')
 gradle.ext.aoscLineProps = lineProps
 
 // Build-tools is a single global buildscript classpath dependency, so only one major
-// is active per invocation — include only the module matching the selected version.
-include "aosc-plugin-os${major}"
+// is active per invocation — the unified module compiles against the selected version.
+include 'aosc-plugin'

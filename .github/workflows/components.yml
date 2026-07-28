@@ -105,8 +105,8 @@ jobs:
         with:
           name: validation-${{ matrix.os_line }}-${{ matrix.id }}-${{ matrix.opensearch_version }}-${{ github.run_attempt }}
           path: |
-            aosc-plugin-*/build/reports/**
-            aosc-plugin-*/build/test-results/**
+            aosc-plugin/build/reports/**
+            aosc-plugin/build/test-results/**
           if-no-files-found: ignore
           retention-days: ${{ inputs.artifact_retention_days }}
 

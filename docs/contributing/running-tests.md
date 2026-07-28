@@ -4,7 +4,7 @@ Every command takes `-PopensearchVersion=<version>`, which selects the OpenSearc
 
 ## Test Matrix
 
-Source paths are under `aosc-plugin-os<N>/src/` (the source tree for the selected line).
+Source paths are under `aosc-plugin/src/` (shared code in `java/`, version-specific in `java-2x/`/`java-3x/`).
 
 | Task | Source | Purpose |
 |------|--------|---------|

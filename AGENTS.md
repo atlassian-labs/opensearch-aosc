@@ -13,16 +13,20 @@ as ordinary work under the human contributor's identity.
 
 ## OpenSearch API Compatibility
 
-AOSC `develop` builds BOTH OpenSearch lines from two per-line source trees:
-`aosc-plugin-os3` (3.x packages: `org.opensearch.transport.client.*`,
-`action.support.clustermanager.*`, Java 21) and `aosc-plugin-os2` (2.x packages:
-`org.opensearch.client.*`, `action.support.master.*`, Java 11). Supported versions
-per line live in `release/os2.properties` / `release/os3.properties`. The
-`-PopensearchVersion` value selects the line; tasks take no project prefix.
+AOSC `develop` builds BOTH OpenSearch lines from a single unified module
+`aosc-plugin` with version-specific source directories. Shared code lives in
+`src/*/java/`; files that differ between OpenSearch 2.x and 3.x live in
+`src/*/java-2x/` and `src/*/java-3x/`. Gradle selects the matching compat
+directory based on `-PopensearchVersion`.
 
-There is no shared Java `core` yet, so **any shared fix must be applied to
-BOTH `aosc-plugin-os2/src` and `aosc-plugin-os3/src`** (keeping each line's
-version-specific imports) until a shared `core` is extracted.
+3.x packages: `org.opensearch.transport.client.*`,
+`action.support.clustermanager.*`, Java 21. 2.x packages:
+`org.opensearch.client.*`, `action.support.master.*`, Java 11. Supported versions
+per line live in `release/os2.properties` / `release/os3.properties`.
+
+Changes to shared files (`src/*/java/`) apply to both lines automatically.
+Changes to version-specific files (`src/*/java-2x/` or `java-3x/`) must be
+mirrored in the other compat directory to keep behavior consistent.
 
 Common 3.x imports:
 

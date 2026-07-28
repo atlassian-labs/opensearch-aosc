@@ -95,7 +95,7 @@ See [Running Tests](docs/contributing/running-tests.md) for the test matrix.
 
 ## Local Docker Cluster
 
-The Docker test cluster lives under the selected line's source tree (`aosc-plugin-os<N>/opensearch-docker`). Prefer the Gradle wrappers from the repository root:
+The Docker test cluster lives under `aosc-plugin/opensearch-docker`. Prefer the Gradle wrappers from the repository root:
 
 ```bash
 export OPENSEARCH_INITIAL_ADMIN_PASSWORD=Admin@123
@@ -109,8 +109,15 @@ curl -s http://localhost:9200/_cluster/health | jq '.'
 
 ```text
 opensearch-aosc/
-|-- aosc-plugin-os2/    # OpenSearch 2.x plugin source, tests, packaging, Docker cluster
-|-- aosc-plugin-os3/    # OpenSearch 3.x plugin source, tests, packaging, Docker cluster
+|-- aosc-plugin/
+|   |-- src/main/java/          # Shared source (both 2.x and 3.x)
+|   |-- src/main/java-2x/       # OpenSearch 2.x-specific source
+|   |-- src/main/java-3x/       # OpenSearch 3.x-specific source
+|   |-- src/test/java/           # Shared tests
+|   |-- src/test/java-2x/        # 2.x-specific tests
+|   |-- src/test/java-3x/        # 3.x-specific tests
+|   |-- licenses/                # Dependency license SHA files
+|   `-- opensearch-docker/       # Docker cluster for smoke/scale tests
 |-- docs/               # VitePress documentation
 |-- gradle/             # Gradle wrapper, formatter config, shared aosc-plugin.gradle
 |-- release/            # Per-line build manifests (os2.properties, os3.properties)

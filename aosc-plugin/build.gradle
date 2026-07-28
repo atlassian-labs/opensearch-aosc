@@ -1,0 +1,7 @@
+// Unified AOSC plugin module — supports both OpenSearch 2.x and 3.x from a single
+// source tree. Version-specific code lives in src/*/java-2x/ and src/*/java-3x/;
+// Gradle selects the matching set based on -PopensearchVersion. All build logic is
+// shared in gradle/aosc-plugin.gradle.
+//   ./gradlew -PopensearchVersion=2.19.0 :aosc-plugin:fastCheck
+//   ./gradlew -PopensearchVersion=3.5.0  :aosc-plugin:fastCheck
+apply from: "$rootDir/gradle/aosc-plugin.gradle"

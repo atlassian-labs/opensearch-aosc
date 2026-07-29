@@ -144,7 +144,7 @@ public class AoscPlugin extends Plugin implements ActionPlugin, SystemIndexPlugi
         // after the first IndexModule has been processed (i.e., after node startup).
         this.shardService = new AoscShardService(rootLogger, clusterService, clientHelper, threadPool, transformFactory);
 
-        return Arrays.asList(migrationDocumentService, transformFactory, coordinatorService, shardService);
+        return Arrays.asList(clientHelper, migrationDocumentService, transformFactory, coordinatorService, shardService);
     }
 
     /**

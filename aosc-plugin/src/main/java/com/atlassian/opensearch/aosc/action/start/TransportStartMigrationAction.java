@@ -37,7 +37,6 @@ import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.common.io.stream.StreamInput;
 import org.opensearch.threadpool.ThreadPool;
 import org.opensearch.transport.TransportService;
-import org.opensearch.transport.client.Client;
 
 import java.io.IOException;
 import java.util.List;
@@ -89,7 +88,7 @@ public class TransportStartMigrationAction extends TransportClusterManagerNodeAc
         ActionFilters actionFilters,
         IndexNameExpressionResolver indexNameExpressionResolver,
         AoscCoordinatorService coordinatorService,
-        Client client,
+        AsyncClientHelper clientHelper,
         TransformFactory transformFactory
     ) {
         super(
@@ -103,7 +102,7 @@ public class TransportStartMigrationAction extends TransportClusterManagerNodeAc
         );
         this.coordinatorService = Objects.requireNonNull(coordinatorService, "coordinatorService");
         this.clusterService = Objects.requireNonNull(clusterService, "clusterService");
-        this.clientHelper = new AsyncClientHelper(Objects.requireNonNull(client, "client"));
+        this.clientHelper = Objects.requireNonNull(clientHelper, "clientHelper");
         this.transformFactory = Objects.requireNonNull(transformFactory, "transformFactory");
     }
 

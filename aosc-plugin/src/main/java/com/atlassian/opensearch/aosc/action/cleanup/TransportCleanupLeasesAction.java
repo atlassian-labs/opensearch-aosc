@@ -15,7 +15,6 @@ import com.atlassian.opensearch.aosc.utils.IndexOperationUtils.MatchedLease;
 
 import org.opensearch.action.support.ActionFilters;
 import org.opensearch.action.support.HandledTransportAction;
-import org.opensearch.client.Client;
 import org.opensearch.common.inject.Inject;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.tasks.Task;
@@ -36,10 +35,10 @@ public class TransportCleanupLeasesAction extends HandledTransportAction<Cleanup
     private final IndexOperationUtils indexOps;
 
     @Inject
-    public TransportCleanupLeasesAction(TransportService transportService, ActionFilters actionFilters, Client client) {
+    public TransportCleanupLeasesAction(TransportService transportService, ActionFilters actionFilters, AsyncClientHelper clientHelper) {
         super(CleanupLeasesAction.NAME, transportService, actionFilters, CleanupLeasesRequest::new);
         this.logger = AoscLogger.create(TransportCleanupLeasesAction.class);
-        this.indexOps = new IndexOperationUtils(this.logger, new AsyncClientHelper(client));
+        this.indexOps = new IndexOperationUtils(this.logger, Objects.requireNonNull(clientHelper, "clientHelper"));
     }
 
     /** Test constructor. */

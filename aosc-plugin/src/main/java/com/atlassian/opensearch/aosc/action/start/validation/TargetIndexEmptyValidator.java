@@ -8,7 +8,6 @@
 package com.atlassian.opensearch.aosc.action.start.validation;
 
 import org.opensearch.action.admin.indices.stats.IndicesStatsRequest;
-import org.opensearch.core.action.ActionListener;
 
 import java.util.concurrent.CompletableFuture;
 
@@ -20,7 +19,11 @@ public final class TargetIndexEmptyValidator implements AsyncMigrationStartValid
     public CompletableFuture<Void> validate(ValidationContext ctx) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         IndicesStatsRequest statsRequest = new IndicesStatsRequest().indices(ctx.request().getTargetIndex()).docs(true);
-        ctx.client().admin().indices().stats(statsRequest, ActionListener.wrap(statsResponse -> {
+        ctx.clientHelper().executeIndicesStatsAsync(statsRequest).whenComplete((statsResponse, ex) -> {
+            if (ex != null) {
+                future.completeExceptionally(ex);
+                return;
+            }
             long docCount = statsResponse.getTotal().getDocs() != null ? statsResponse.getTotal().getDocs().getCount() : 0;
             if (docCount > 0) {
                 future.completeExceptionally(
@@ -35,7 +38,7 @@ public final class TargetIndexEmptyValidator implements AsyncMigrationStartValid
             } else {
                 future.complete(null);
             }
-        }, future::completeExceptionally));
+        });
         return future;
     }
 }

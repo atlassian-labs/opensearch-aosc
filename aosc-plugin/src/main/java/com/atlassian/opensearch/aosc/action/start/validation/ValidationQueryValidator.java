@@ -8,7 +8,6 @@
 package com.atlassian.opensearch.aosc.action.start.validation;
 
 import org.opensearch.action.search.SearchRequest;
-import org.opensearch.core.action.ActionListener;
 import org.opensearch.index.query.QueryBuilder;
 import org.opensearch.search.builder.SearchSourceBuilder;
 
@@ -46,16 +45,15 @@ public final class ValidationQueryValidator implements AsyncMigrationStartValida
     private static CompletableFuture<Void> dryRunSearch(ValidationContext ctx, String index, QueryBuilder query) {
         CompletableFuture<Void> future = new CompletableFuture<>();
         SearchRequest req = new SearchRequest(index).source(new SearchSourceBuilder().query(query).size(0));
-        ctx.client()
-            .search(
-                req,
-                ActionListener.wrap(
-                    response -> future.complete(null),
-                    ex -> future.completeExceptionally(
-                        new IllegalArgumentException("validation_query failed on index [" + index + "]: " + ex.getMessage(), ex)
-                    )
-                )
-            );
+        ctx.clientHelper().executeSearchAsync(req).whenComplete((response, ex) -> {
+            if (ex != null) {
+                future.completeExceptionally(
+                    new IllegalArgumentException("validation_query failed on index [" + index + "]: " + ex.getMessage(), ex)
+                );
+            } else {
+                future.complete(null);
+            }
+        });
         return future;
     }
 }

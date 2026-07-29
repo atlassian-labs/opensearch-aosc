@@ -9,6 +9,7 @@ package com.atlassian.opensearch.aosc.service.bulk;
 
 import com.atlassian.opensearch.aosc.service.bulk.ThreadSafeDocSourceTests.TestMetrics;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
@@ -89,7 +90,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         expectThrows(
             IllegalArgumentException.class,
             () -> new ConcurrentBulkWriter(
-                mock(Client.class),
+                AsyncClientHelper.wrap(mock(Client.class)),
                 mockThreadPool(),
                 badController,
                 AoscLogger.create(ConcurrentBulkWriter.class)
@@ -107,7 +108,12 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     public void testConstructorRejectsNullController() {
         expectThrows(
             NullPointerException.class,
-            () -> new ConcurrentBulkWriter(mock(Client.class), mockThreadPool(), null, AoscLogger.create(ConcurrentBulkWriter.class))
+            () -> new ConcurrentBulkWriter(
+                AsyncClientHelper.wrap(mock(Client.class)),
+                mockThreadPool(),
+                null,
+                AoscLogger.create(ConcurrentBulkWriter.class)
+            )
         );
     }
 
@@ -126,7 +132,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     public void testSingleDocWriteCompletesSuccessfully() throws Exception {
         Client client = mockClientWithBulkResponse();
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             mockController(),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -145,7 +151,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     public void testMultipleDocsConsumedSequentially() throws Exception {
         Client client = mockClientWithBulkResponse();
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             mockController(),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -168,7 +174,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         when(controller.handleOutcome(any())).thenReturn(WriteDecision.fatal("Test fatal error"));
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -198,7 +204,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -223,7 +229,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -238,7 +244,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     public void testConcurrentWritersWithHighW() throws Exception {
         Client client = mockClientWithBulkResponse();
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             mockController(4),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -260,7 +266,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         when(controller.nextBatchSize()).thenReturn(1);
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -296,7 +302,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -333,7 +339,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -369,7 +375,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -407,7 +413,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -451,7 +457,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -494,7 +500,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -538,7 +544,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -592,7 +598,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -645,7 +651,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -698,7 +704,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -765,7 +771,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            client,
+            AsyncClientHelper.wrap(client),
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -793,7 +799,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
 
     private ConcurrentBulkWriter writer(int concurrency) {
         return new ConcurrentBulkWriter(
-            mockClientWithBulkResponse(),
+            AsyncClientHelper.wrap(mockClientWithBulkResponse()),
             mockThreadPool(),
             mockController(concurrency),
             AoscLogger.create(ConcurrentBulkWriter.class)

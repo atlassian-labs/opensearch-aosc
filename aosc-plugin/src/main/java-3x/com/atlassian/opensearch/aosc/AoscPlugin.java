@@ -33,6 +33,7 @@ import com.atlassian.opensearch.aosc.service.coordinator.MigrationDocumentServic
 import com.atlassian.opensearch.aosc.service.worker.AoscShardService;
 import com.atlassian.opensearch.aosc.transform.TransformFactory;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 
 import org.opensearch.action.ActionRequest;
 import org.opensearch.cluster.ClusterState;
@@ -124,17 +125,24 @@ public class AoscPlugin extends Plugin implements ActionPlugin, SystemIndexPlugi
         AoscLogger rootLogger = AoscLogger.create(AoscPlugin.class);
 
         // 1. Leaf services — no dependencies on each other
-        MigrationDocumentService migrationDocumentService = new MigrationDocumentService(rootLogger, client);
+        AsyncClientHelper clientHelper = new AsyncClientHelper(client);
+        MigrationDocumentService migrationDocumentService = new MigrationDocumentService(rootLogger, clientHelper);
         TransformFactory transformFactory = createTransformFactory(scriptService);
 
         // 2. Coordinator service (ClusterManager-only, ClusterStateApplier)
-        this.coordinatorService = new AoscCoordinatorService(rootLogger, client, clusterService, threadPool, migrationDocumentService);
+        this.coordinatorService = new AoscCoordinatorService(
+            rootLogger,
+            clientHelper,
+            clusterService,
+            threadPool,
+            migrationDocumentService
+        );
 
         // 3. Shard service (all data nodes, ClusterStateListener + IndexEventListener)
         // IndicesService is not available here — passed as a Supplier resolved lazily
         // via onIndexModule(). The shardService will use it in clusterChanged() only
         // after the first IndexModule has been processed (i.e., after node startup).
-        this.shardService = new AoscShardService(rootLogger, clusterService, client, threadPool, transformFactory);
+        this.shardService = new AoscShardService(rootLogger, clusterService, clientHelper, threadPool, transformFactory);
 
         return Arrays.asList(migrationDocumentService, transformFactory, coordinatorService, shardService);
     }

@@ -8,6 +8,7 @@
 package com.atlassian.opensearch.aosc.action.cleanup;
 
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.IndexOperationUtils;
 
 import org.opensearch.action.ActionType;
@@ -78,7 +79,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
         );
 
         FakeClient client = new FakeClient(threadPool, stats, /* removeOk */ true, /* removeException */ null);
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -99,7 +103,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
         );
 
         FakeClient client = new FakeClient(threadPool, stats, true, null);
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -127,7 +134,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
         );
 
         FakeClient client = new FakeClient(threadPool, stats, true, null);
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -156,7 +166,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
             /* removeOk */ false,
             /* removeException */ new RetentionLeaseNotFoundException("aosc-migration-mig-0")
         );
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -180,7 +193,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
         );
 
         FakeClient client = new FakeClient(threadPool, stats, false, new RuntimeException("network down"));
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -201,7 +217,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
     public void testStatsFailurePropagatesToListener() {
         FakeClient client = new FakeClient(threadPool, /* statsResponse */ null, true, null);
         client.statsException = new RuntimeException("stats blew up");
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -222,7 +241,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
         IndicesStatsResponse stats = statsResponseFor(primaryCopy, replicaCopy);
 
         FakeClient client = new FakeClient(threadPool, stats, true, null);
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,
@@ -238,7 +260,10 @@ public class TransportCleanupLeasesActionTests extends OpenSearchTestCase {
     public void testEmptyStatsProducesEmptyResponse() {
         IndicesStatsResponse stats = statsResponseFor(/* no shards */);
         FakeClient client = new FakeClient(threadPool, stats, true, null);
-        IndexOperationUtils indexOps = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), client);
+        IndexOperationUtils indexOps = new IndexOperationUtils(
+            AoscLogger.create(IndexOperationUtils.class),
+            AsyncClientHelper.wrap(client)
+        );
 
         CompletableFuture<CleanupLeasesResponse> future = execute(
             indexOps,

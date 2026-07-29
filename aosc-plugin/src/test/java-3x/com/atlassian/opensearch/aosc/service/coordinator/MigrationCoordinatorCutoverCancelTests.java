@@ -17,6 +17,7 @@ import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
 import com.atlassian.opensearch.aosc.model.transform.InlineTransformScript;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
 
@@ -116,7 +117,7 @@ public class MigrationCoordinatorCutoverCancelTests extends OpenSearchTestCase {
             "cancel-before",
             CoordinatorPhase.COMPLETING,
             entry,
-            mockClient,
+            AsyncClientHelper.wrap(mockClient),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -149,7 +150,7 @@ public class MigrationCoordinatorCutoverCancelTests extends OpenSearchTestCase {
             "cancel-after",
             CoordinatorPhase.COMPLETING,
             entry,
-            mockClient,
+            AsyncClientHelper.wrap(mockClient),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,

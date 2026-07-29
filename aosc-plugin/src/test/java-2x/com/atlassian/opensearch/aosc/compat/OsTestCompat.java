@@ -15,6 +15,7 @@ import org.opensearch.index.seqno.RetentionLeaseStats;
 import org.opensearch.index.seqno.SeqNoStats;
 import org.opensearch.index.shard.ShardPath;
 
+/** OpenSearch 2.x test compat: ShardStats 6-param constructor. */
 public final class OsTestCompat {
 
     private OsTestCompat() {}

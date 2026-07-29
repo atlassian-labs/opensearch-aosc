@@ -12,6 +12,7 @@ import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 
 import org.opensearch.ResourceAlreadyExistsException;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
@@ -203,7 +204,7 @@ public class MigrationDocumentServiceTests extends OpenSearchTestCase {
     // ---- helpers ----
 
     private static MigrationDocumentService newService(Client client) {
-        return new MigrationDocumentService(AoscLogger.create(MigrationDocumentService.class), client);
+        return new MigrationDocumentService(AoscLogger.create(MigrationDocumentService.class), AsyncClientHelper.wrap(client));
     }
 
     private static Client mockClient() {

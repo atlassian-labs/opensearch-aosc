@@ -43,7 +43,7 @@ public class IndexOperationUtilsWriteBlockTests extends OpenSearchTestCase {
         mockIndicesAdmin = mock(IndicesAdminClient.class);
         when(mockClient.admin()).thenReturn(mockAdmin);
         when(mockAdmin.indices()).thenReturn(mockIndicesAdmin);
-        utils = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), mockClient);
+        utils = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), AsyncClientHelper.wrap(mockClient));
     }
 
     public void testRemoveWriteBlockIssuesIndexBlocksWriteFalse() throws Exception {

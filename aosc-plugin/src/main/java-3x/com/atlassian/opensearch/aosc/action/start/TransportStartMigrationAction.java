@@ -21,6 +21,7 @@ import com.atlassian.opensearch.aosc.action.start.validation.ValidationQueryVali
 import com.atlassian.opensearch.aosc.model.MigrationRequest;
 import com.atlassian.opensearch.aosc.service.coordinator.AoscCoordinatorService;
 import com.atlassian.opensearch.aosc.transform.TransformFactory;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.AsyncUtils;
 
 import org.opensearch.action.support.ActionFilters;
@@ -77,7 +78,7 @@ public class TransportStartMigrationAction extends TransportClusterManagerNodeAc
 
     private final AoscCoordinatorService coordinatorService;
     private final ClusterService clusterService;
-    private final Client client;
+    private final AsyncClientHelper clientHelper;
     private final TransformFactory transformFactory;
 
     @Inject
@@ -102,7 +103,7 @@ public class TransportStartMigrationAction extends TransportClusterManagerNodeAc
         );
         this.coordinatorService = Objects.requireNonNull(coordinatorService, "coordinatorService");
         this.clusterService = Objects.requireNonNull(clusterService, "clusterService");
-        this.client = Objects.requireNonNull(client, "client");
+        this.clientHelper = new AsyncClientHelper(Objects.requireNonNull(client, "client"));
         this.transformFactory = Objects.requireNonNull(transformFactory, "transformFactory");
     }
 
@@ -133,7 +134,7 @@ public class TransportStartMigrationAction extends TransportClusterManagerNodeAc
             targetMeta,
             transformFactory,
             clusterService.getClusterSettings(),
-            client
+            clientHelper
         );
 
         // 1. Synchronous validators: fail-fast on the first error

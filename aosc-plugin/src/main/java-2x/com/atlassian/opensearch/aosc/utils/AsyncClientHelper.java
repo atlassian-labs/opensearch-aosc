@@ -13,6 +13,8 @@ import org.opensearch.action.ActionRequest;
 import org.opensearch.action.ActionType;
 import org.opensearch.action.admin.cluster.health.ClusterHealthRequest;
 import org.opensearch.action.admin.cluster.health.ClusterHealthResponse;
+import org.opensearch.action.admin.cluster.node.info.NodesInfoRequest;
+import org.opensearch.action.admin.cluster.node.info.NodesInfoResponse;
 import org.opensearch.action.admin.indices.alias.IndicesAliasesRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexRequest;
 import org.opensearch.action.admin.indices.create.CreateIndexResponse;
@@ -24,6 +26,8 @@ import org.opensearch.action.admin.indices.readonly.AddIndexBlockResponse;
 import org.opensearch.action.admin.indices.refresh.RefreshRequest;
 import org.opensearch.action.admin.indices.refresh.RefreshResponse;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
+import org.opensearch.action.admin.indices.stats.IndicesStatsRequest;
+import org.opensearch.action.admin.indices.stats.IndicesStatsResponse;
 import org.opensearch.action.bulk.BackoffPolicy;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
@@ -36,35 +40,52 @@ import org.opensearch.action.search.SearchResponse;
 import org.opensearch.action.support.RetryableAction;
 import org.opensearch.action.support.master.AcknowledgedResponse;
 import org.opensearch.client.Client;
+import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.common.unit.TimeValue;
+import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.action.ActionResponse;
 import org.opensearch.threadpool.ThreadPool;
 
+import java.util.Objects;
 import java.util.concurrent.CompletableFuture;
 import java.util.function.Predicate;
 import java.util.function.Supplier;
 
 /**
- * Utility that wraps OpenSearch's {@link Client#execute} with {@link CompletableFuture}
- * for consistent async patterns across the AOSC codebase.
+ * Instance wrapper around a version-specific {@link Client} that exposes
+ * async operations as {@link CompletableFuture}s for the AOSC codebase.
  */
-public final class AsyncClientHelper {
+public class AsyncClientHelper {
 
-    private AsyncClientHelper() {} // utility class
+    private final Client client;
+
+    public AsyncClientHelper(Client client) {
+        this.client = Objects.requireNonNull(client, "client");
+    }
+
+    public static AsyncClientHelper wrap(Client client) {
+        return new AsyncClientHelper(client);
+    }
+
+    public ThreadPool threadPool() {
+        return client.threadPool();
+    }
+
+    public ThreadContext threadContext() {
+        return client.threadPool().getThreadContext();
+    }
 
     /**
      * Execute a transport action and return a {@link CompletableFuture}.
      *
-     * @param client the OpenSearch client
      * @param action the action type
      * @param request the request
      * @param <Req> the request type
      * @param <Resp> the response type
      * @return a future that completes with the response or fails with the exception
      */
-    public static <Req extends ActionRequest, Resp extends ActionResponse> CompletableFuture<Resp> executeAsync(
-        Client client,
+    public <Req extends ActionRequest, Resp extends ActionResponse> CompletableFuture<Resp> executeAsync(
         ActionType<Resp> action,
         Req request
     ) {
@@ -124,7 +145,7 @@ public final class AsyncClientHelper {
         return result;
     }
 
-    public static CompletableFuture<BulkResponse> executeBulkAsync(Client client, BulkRequest request) {
+    public CompletableFuture<BulkResponse> executeBulkAsync(BulkRequest request) {
         CompletableFuture<BulkResponse> future = new CompletableFuture<>();
         try {
             client.bulk(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -134,7 +155,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<CreateIndexResponse> executeCreateIndexAsync(Client client, CreateIndexRequest request) {
+    public CompletableFuture<CreateIndexResponse> executeCreateIndexAsync(CreateIndexRequest request) {
         CompletableFuture<CreateIndexResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().create(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -144,7 +165,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<IndexResponse> executeIndexAsync(Client client, IndexRequest request) {
+    public CompletableFuture<IndexResponse> executeIndexAsync(IndexRequest request) {
         CompletableFuture<IndexResponse> future = new CompletableFuture<>();
         try {
             client.index(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -154,7 +175,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<GetResponse> executeGetAsync(Client client, GetRequest request) {
+    public CompletableFuture<GetResponse> executeGetAsync(GetRequest request) {
         CompletableFuture<GetResponse> future = new CompletableFuture<>();
         try {
             client.get(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -164,7 +185,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<SearchResponse> executeSearchAsync(Client client, SearchRequest request) {
+    public CompletableFuture<SearchResponse> executeSearchAsync(SearchRequest request) {
         CompletableFuture<SearchResponse> future = new CompletableFuture<>();
         try {
             client.search(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -174,7 +195,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<AcknowledgedResponse> executeUpdateSettingsAsync(Client client, UpdateSettingsRequest request) {
+    public CompletableFuture<AcknowledgedResponse> executeUpdateSettingsAsync(UpdateSettingsRequest request) {
         CompletableFuture<AcknowledgedResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().updateSettings(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -184,7 +205,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<AcknowledgedResponse> executePutMappingAsync(Client client, PutMappingRequest request) {
+    public CompletableFuture<AcknowledgedResponse> executePutMappingAsync(PutMappingRequest request) {
         CompletableFuture<AcknowledgedResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().putMapping(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -194,7 +215,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<FlushResponse> executeFlushAsync(Client client, FlushRequest request) {
+    public CompletableFuture<FlushResponse> executeFlushAsync(FlushRequest request) {
         CompletableFuture<FlushResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().flush(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -204,7 +225,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<AcknowledgedResponse> executeAliasesAsync(Client client, IndicesAliasesRequest request) {
+    public CompletableFuture<AcknowledgedResponse> executeAliasesAsync(IndicesAliasesRequest request) {
         CompletableFuture<AcknowledgedResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().aliases(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -214,7 +235,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<RefreshResponse> executeRefreshAsync(Client client, RefreshRequest request) {
+    public CompletableFuture<RefreshResponse> executeRefreshAsync(RefreshRequest request) {
         CompletableFuture<RefreshResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().refresh(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -224,7 +245,7 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<AddIndexBlockResponse> executeAddIndexBlockAsync(Client client, AddIndexBlockRequest request) {
+    public CompletableFuture<AddIndexBlockResponse> executeAddIndexBlockAsync(AddIndexBlockRequest request) {
         CompletableFuture<AddIndexBlockResponse> future = new CompletableFuture<>();
         try {
             client.admin().indices().addBlock(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -234,7 +255,12 @@ public final class AsyncClientHelper {
         return future;
     }
 
-    public static CompletableFuture<ClusterHealthResponse> executeClusterHealthAsync(Client client, ClusterHealthRequest request) {
+    public CompletableFuture<AddIndexBlockResponse> executeAddIndexBlockByName(String index) {
+        AddIndexBlockRequest req = new AddIndexBlockRequest(IndexMetadata.APIBlock.WRITE, index);
+        return executeAddIndexBlockAsync(req);
+    }
+
+    public CompletableFuture<ClusterHealthResponse> executeClusterHealthAsync(ClusterHealthRequest request) {
         CompletableFuture<ClusterHealthResponse> future = new CompletableFuture<>();
         try {
             client.admin().cluster().health(request, ActionListener.wrap(future::complete, future::completeExceptionally));
@@ -242,5 +268,19 @@ public final class AsyncClientHelper {
             future.completeExceptionally(e);
         }
         return future;
+    }
+
+    public CompletableFuture<IndicesStatsResponse> executeIndicesStatsAsync(IndicesStatsRequest request) {
+        CompletableFuture<IndicesStatsResponse> future = new CompletableFuture<>();
+        try {
+            client.admin().indices().stats(request, ActionListener.wrap(future::complete, future::completeExceptionally));
+        } catch (Exception e) {
+            future.completeExceptionally(e);
+        }
+        return future;
+    }
+
+    public void executeNodesInfoAsync(NodesInfoRequest request, ActionListener<NodesInfoResponse> listener) {
+        client.admin().cluster().nodesInfo(request, listener);
     }
 }

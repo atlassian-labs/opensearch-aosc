@@ -15,6 +15,7 @@ import com.atlassian.opensearch.aosc.service.bulk.SimpleWriteController;
 import com.atlassian.opensearch.aosc.service.worker.TranslogReplayEngine.ReplayResult;
 import com.atlassian.opensearch.aosc.transform.IdentityTransformFunction;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.ShardHandle;
 
 import org.opensearch.action.bulk.BulkItemResponse;
@@ -651,7 +652,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             () -> 100_000_000L,
             new OverloadBackoff(() -> 2_000L, () -> 120_000L, () -> 50)
         );
-        return new ConcurrentBulkWriter(client, threadPool, controller, logger);
+        return new ConcurrentBulkWriter(AsyncClientHelper.wrap(client), threadPool, controller, logger);
     }
 
     /** Creates a ConcurrentBulkWriter with W=1 and default batch size of 500. */

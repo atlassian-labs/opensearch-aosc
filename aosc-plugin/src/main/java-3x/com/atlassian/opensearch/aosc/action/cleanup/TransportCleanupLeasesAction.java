@@ -8,6 +8,7 @@
 package com.atlassian.opensearch.aosc.action.cleanup;
 
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
+import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.AsyncUtils;
 import com.atlassian.opensearch.aosc.utils.IndexOperationUtils;
 import com.atlassian.opensearch.aosc.utils.IndexOperationUtils.MatchedLease;
@@ -38,7 +39,7 @@ public class TransportCleanupLeasesAction extends HandledTransportAction<Cleanup
     public TransportCleanupLeasesAction(TransportService transportService, ActionFilters actionFilters, Client client) {
         super(CleanupLeasesAction.NAME, transportService, actionFilters, CleanupLeasesRequest::new);
         this.logger = AoscLogger.create(TransportCleanupLeasesAction.class);
-        this.indexOps = new IndexOperationUtils(this.logger, Objects.requireNonNull(client, "client"));
+        this.indexOps = new IndexOperationUtils(this.logger, new AsyncClientHelper(client));
     }
 
     /** Test constructor. */

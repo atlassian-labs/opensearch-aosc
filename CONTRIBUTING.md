@@ -38,7 +38,7 @@ Run at least the core checks for the OpenSearch version you changed against:
 ./gradlew itTest -PopensearchVersion=3.6.0
 ```
 
-Change the version to build the other line (e.g. `-PopensearchVersion=2.19.0` for os2). Shared code lives in `aosc-plugin/src/*/java/` and applies to both lines automatically. Version-specific code lives in `aosc-plugin/src/*/java-2x/` and `java-3x/` — changes to one must be mirrored in the other. Some changes need broader validation, such as `smokeTest`, `scaleTest`, or `benchmark`. See [Running Tests](docs/contributing/running-tests.md).
+Change the version to build the other line (e.g. `-PopensearchVersion=2.19.0` for os2). Shared code lives in `aosc-plugin/src/*/java/` and applies to both lines automatically. Version-specific code lives in `aosc-plugin/src/*/java-2x/` and `java-3x/` — changes to one must be mirrored in the other. Most compat files differ only in import lines; CI enforces this with a drift guard (`scripts/check-compat-drift.sh`). See [Code Layout](docs/contributing/code-layout.md) for the compat utilities and when to use shared vs compat dirs. Some changes need broader validation, such as `smokeTest`, `scaleTest`, or `benchmark`. See [Running Tests](docs/contributing/running-tests.md).
 
 GitHub Actions runs the public CI matrix for pull requests. Maintainers may ask for additional local or maintainer-run validation for compatibility-sensitive changes.
 

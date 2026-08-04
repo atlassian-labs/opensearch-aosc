@@ -26,7 +26,18 @@ per line live in `release/os2.properties` / `release/os3.properties`.
 
 Changes to shared files (`src/*/java/`) apply to both lines automatically.
 Changes to version-specific files (`src/*/java-2x/` or `java-3x/`) must be
-mirrored in the other compat directory to keep behavior consistent.
+mirrored in the other compat directory to keep behavior consistent. CI runs
+`scripts/check-compat-drift.sh` to enforce that non-excepted compat file
+pairs differ only in import/package lines.
+
+Compat utilities that abstract version differences (use these instead of
+putting version-specific code in shared files):
+
+- `AsyncClientHelper` — wraps `Client`; shared code receives this, never raw `Client`
+- `OsCompat` — `TotalHits` field vs method, `storedFields()` accessor
+- `OsTestCompat` — `ShardStats` constructor difference
+- `MockClientFactory` — mock `Client`/`AdminClient` creation for tests
+- `HttpCompat` — Apache HttpClient 4 vs 5 in smoke/benchmark tests
 
 Common 3.x imports:
 

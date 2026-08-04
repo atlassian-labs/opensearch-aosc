@@ -47,6 +47,17 @@ jobs:
           VALIDATION_TIER: ${{ inputs.tier }}
         run: ./scripts/ci-metadata.py "${{ inputs.os_line }}" --github-output
 
+  compat-drift:
+    name: Compat drift check
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ inputs.ref }}
+      - name: Check compat dirs for non-import divergence
+        run: ./scripts/check-compat-drift.sh aosc-plugin
+
   docs:
     name: Docs build
     needs: metadata
@@ -114,6 +125,7 @@ jobs:
     name: Validation result
     needs:
       - metadata
+      - compat-drift
       - docs
       - gradle
     if: always()
@@ -123,6 +135,10 @@ jobs:
         run: |
           if [[ "${{ needs.metadata.result }}" != "success" ]]; then
             echo "Validation metadata failed: ${{ needs.metadata.result }}" >&2
+            exit 1
+          fi
+          if [[ "${{ needs.compat-drift.result }}" != "success" ]]; then
+            echo "Compat drift check failed: ${{ needs.compat-drift.result }}" >&2
             exit 1
           fi
           if [[ "${{ inputs.include_docs }}" == "true" && "${{ needs.docs.result }}" != "success" ]]; then

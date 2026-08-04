@@ -7,13 +7,11 @@
  */
 package com.atlassian.opensearch.aosc.utils;
 
+import com.atlassian.opensearch.aosc.compat.MockClientFactory;
+
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
-import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.test.OpenSearchTestCase;
-import org.opensearch.transport.client.AdminClient;
-import org.opensearch.transport.client.Client;
-import org.opensearch.transport.client.IndicesAdminClient;
 
 import java.util.Arrays;
 import java.util.concurrent.CompletableFuture;
@@ -24,26 +22,18 @@ import org.mockito.Mockito;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.Mockito.doAnswer;
-import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
-import static org.mockito.Mockito.when;
 
-/** Unit tests for {@link IndexOperationUtils#applyWriteBlock(String)} and {@link IndexOperationUtils#removeWriteBlock(String)}. */
 public class IndexOperationUtilsWriteBlockTests extends OpenSearchTestCase {
 
-    private Client mockClient;
-    private IndicesAdminClient mockIndicesAdmin;
+    private MockClientFactory.Handle mock;
     private IndexOperationUtils utils;
 
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        mockClient = mock(Client.class);
-        AdminClient mockAdmin = mock(AdminClient.class);
-        mockIndicesAdmin = mock(IndicesAdminClient.class);
-        when(mockClient.admin()).thenReturn(mockAdmin);
-        when(mockAdmin.indices()).thenReturn(mockIndicesAdmin);
-        utils = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), AsyncClientHelper.wrap(mockClient));
+        mock = MockClientFactory.createHandle();
+        utils = new IndexOperationUtils(AoscLogger.create(IndexOperationUtils.class), mock.helper());
     }
 
     public void testRemoveWriteBlockIssuesIndexBlocksWriteFalse() throws Exception {
@@ -52,7 +42,7 @@ public class IndexOperationUtilsWriteBlockTests extends OpenSearchTestCase {
         utils.removeWriteBlock("source-idx").get(5, TimeUnit.SECONDS);
 
         ArgumentCaptor<UpdateSettingsRequest> captor = ArgumentCaptor.forClass(UpdateSettingsRequest.class);
-        verify(mockIndicesAdmin).updateSettings(captor.capture(), any(ActionListener.class));
+        verify(mock.indicesAdmin()).updateSettings(captor.capture(), any(ActionListener.class));
 
         UpdateSettingsRequest req = captor.getValue();
         assertTrue(
@@ -75,17 +65,16 @@ public class IndexOperationUtilsWriteBlockTests extends OpenSearchTestCase {
         first.get(5, TimeUnit.SECONDS);
         second.get(5, TimeUnit.SECONDS);
 
-        verify(mockIndicesAdmin, Mockito.times(2)).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+        verify(mock.indicesAdmin(), Mockito.times(2)).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockUpdateSettingsAck() {
         doAnswer(invocation -> {
-            ActionListener<AcknowledgedResponse> listener = invocation.getArgument(1);
-            listener.onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = invocation.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(mockIndicesAdmin).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+        }).when(mock.indicesAdmin()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
     }
 
 }

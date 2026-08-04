@@ -9,6 +9,7 @@ package com.atlassian.opensearch.aosc.service.coordinator;
 
 import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.AoscTestUtil;
+import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState;
 import com.atlassian.opensearch.aosc.model.MigrationDocument;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
@@ -19,7 +20,6 @@ import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
 import com.atlassian.opensearch.aosc.model.transform.InlineTransformScript;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
-import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
 
@@ -35,10 +35,6 @@ import org.opensearch.action.admin.indices.refresh.RefreshResponse;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.opensearch.action.search.SearchRequest;
 import org.opensearch.action.search.SearchResponse;
-import org.opensearch.action.support.master.AcknowledgedResponse;
-import org.opensearch.client.AdminClient;
-import org.opensearch.client.Client;
-import org.opensearch.client.IndicesAdminClient;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.ClusterStateUpdateTask;
 import org.opensearch.cluster.service.ClusterService;
@@ -82,26 +78,20 @@ import static org.mockito.Mockito.when;
 @ThreadLeakScope(ThreadLeakScope.Scope.NONE)
 public class MigrationCoordinatorTests extends OpenSearchTestCase {
 
-    private Client mockClient;
+    private MockClientFactory.Handle mockHandle;
     private ClusterService mockClusterService;
     private ThreadPool mockThreadPool;
     private MigrationDocumentService mockMigrationDocumentService;
-    private IndicesAdminClient mockIndicesAdmin;
     private final List<ScheduledExecutorService> testSchedulers = new ArrayList<>();
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        mockClient = mock(Client.class);
+        mockHandle = MockClientFactory.createHandle();
         mockClusterService = mock(ClusterService.class);
         mockThreadPool = mock(ThreadPool.class);
         mockMigrationDocumentService = mock(MigrationDocumentService.class);
-
-        // Mock admin client chain
-        AdminClient mockAdminClient = mock(AdminClient.class);
-        mockIndicesAdmin = mock(IndicesAdminClient.class);
-        when(mockClient.admin()).thenReturn(mockAdminClient);
-        when(mockAdminClient.indices()).thenReturn(mockIndicesAdmin);
 
         // Mock scheduleWithFixedDelay: run the task on a real scheduler so liveness checks fire
         doAnswer(invocation -> {
@@ -195,7 +185,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-cancel",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -251,7 +241,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-fail",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -299,7 +289,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-rollback",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -322,7 +312,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
         }, 5, TimeUnit.SECONDS);
 
         // Verify alias rollback was attempted (swapAlias calls client.admin().indices().aliases())
-        verify(mockIndicesAdmin, atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
 
         coordinator.close();
     }
@@ -352,7 +342,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-gate",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -405,7 +395,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-shard-fail",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -458,7 +448,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-tier1",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -508,7 +498,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-unknown-shard",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -528,34 +518,27 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
 
     // ---- Mock helpers ----
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockAliasSuccess() {
         doAnswer(invocation -> {
-            ActionListener<AcknowledgedResponse> listener = invocation.getArgument(1);
-            listener.onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = invocation.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(mockIndicesAdmin).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
+        }).when(mockHandle.indicesAdmin()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockUpdateSettingsSuccess() {
         doAnswer(invocation -> {
-            ActionListener<AcknowledgedResponse> listener = invocation.getArgument(1);
-            listener.onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = invocation.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(mockIndicesAdmin).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+        }).when(mockHandle.indicesAdmin()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
     }
 
     // ---- Test: a cutover failure surfaces a real error_message instead of "unknown" ----
 
-    /**
-     * A doc-count mismatch at cutover throws inside the COMPLETING handler, reaching the state
-     * machine's generic onFailure rather than failWithReason(). This asserts that path now records
-     * the real reason in the status document instead of the "unknown" default applied by onFailing.
-     */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     public void testCutoverDocCountMismatchSurfacesRealErrorMessage() throws Exception {
         mockUpdateSettingsSuccess();
         mockAliasSuccess();
@@ -584,7 +567,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-cutover-doccount",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -611,38 +594,38 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
         coordinator.close();
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockRefreshSuccess() {
         doAnswer(invocation -> {
-            ActionListener<RefreshResponse> listener = invocation.getArgument(1);
+            ActionListener listener = invocation.getArgument(1);
             listener.onResponse(mock(RefreshResponse.class));
             return null;
-        }).when(mockIndicesAdmin).refresh(any(RefreshRequest.class), any(ActionListener.class));
+        }).when(mockHandle.indicesAdmin()).refresh(any(RefreshRequest.class), any(ActionListener.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockFlushSuccess() {
         doAnswer(invocation -> {
-            ActionListener<FlushResponse> listener = invocation.getArgument(1);
+            ActionListener listener = invocation.getArgument(1);
             listener.onResponse(mock(FlushResponse.class));
             return null;
-        }).when(mockIndicesAdmin).flush(any(FlushRequest.class), any(ActionListener.class));
+        }).when(mockHandle.indicesAdmin()).flush(any(FlushRequest.class), any(ActionListener.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockAddBlockSuccess() {
         doAnswer(invocation -> {
-            ActionListener<AddIndexBlockResponse> listener = invocation.getArgument(1);
+            ActionListener listener = invocation.getArgument(1);
             listener.onResponse(mock(AddIndexBlockResponse.class));
             return null;
-        }).when(mockIndicesAdmin).addBlock(any(AddIndexBlockRequest.class), any(ActionListener.class));
+        }).when(mockHandle.indicesAdmin()).addBlock(any(AddIndexBlockRequest.class), any(ActionListener.class));
     }
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     private void mockSearchDocCounts(String sourceIndex, long sourceCount, String targetIndex, long targetCount) {
         doAnswer(invocation -> {
             SearchRequest req = invocation.getArgument(0);
-            ActionListener<SearchResponse> listener = invocation.getArgument(1);
+            ActionListener listener = invocation.getArgument(1);
             String requestedIndex = req.indices()[0];
             long count;
             if (requestedIndex.equals(sourceIndex)) {
@@ -658,7 +641,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             when(response.getHits()).thenReturn(hits);
             listener.onResponse(response);
             return null;
-        }).when(mockClient).search(any(SearchRequest.class), any(ActionListener.class));
+        }).when(mockHandle.client()).search(any(SearchRequest.class), any(ActionListener.class));
     }
 
     // ---- Test: rollback restores transient target settings on failure ----
@@ -704,7 +687,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-restore-settings",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -726,9 +709,9 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
         }, 5, TimeUnit.SECONDS);
 
         // Verify updateSettings was called (covers both transient restore + rebalance/write-block rollback)
-        verify(mockIndicesAdmin, atLeastOnce()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
         // Verify alias rollback was also attempted
-        verify(mockIndicesAdmin, atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
 
         coordinator.close();
     }
@@ -776,7 +759,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-cancel-restore",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -798,16 +781,16 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
         }, 5, TimeUnit.SECONDS);
 
         // Verify updateSettings was called (covers transient restore + rebalance/write-block rollback)
-        verify(mockIndicesAdmin, atLeastOnce()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
         // Verify alias rollback was also attempted
-        verify(mockIndicesAdmin, atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
 
         coordinator.close();
     }
 
     // ---- Test: rollback tolerates transient restore failure (target already deleted) ----
 
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     public void testFailingPhaseSwallowsTransientRestoreFailure() throws Exception {
         mockAliasSuccess();
 
@@ -815,18 +798,17 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
         // (rebalance restore, write block removal). No retries — matches onPreparingTarget single-attempt pattern.
         AtomicInteger updateSettingsCalls = new AtomicInteger(0);
         doAnswer(invocation -> {
-            ActionListener<AcknowledgedResponse> listener = invocation.getArgument(1);
+            ActionListener listener = invocation.getArgument(1);
             int callNumber = updateSettingsCalls.incrementAndGet();
             if (callNumber == 1) {
                 // First call is the target settings restore — fails (target already deleted)
                 listener.onFailure(new IndexNotFoundException("target-idx"));
             } else {
                 // Subsequent calls (rebalance, write-block) succeed
-                listener.onResponse(new AcknowledgedResponse(true) {
-                });
+                listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             }
             return null;
-        }).when(mockIndicesAdmin).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
+        }).when(mockHandle.indicesAdmin()).updateSettings(any(UpdateSettingsRequest.class), any(ActionListener.class));
 
         MigrationMetadata metaWithOriginals = MigrationMetadata.builder()
             .putOriginalTargetSettings(Map.of("index.number_of_replicas", "1"))
@@ -863,7 +845,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-restore-swallow",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -928,7 +910,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-no-transient",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -956,12 +938,12 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
         }, 5, TimeUnit.SECONDS);
 
         // Alias rollback should still happen
-        verify(mockIndicesAdmin, atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).aliases(any(IndicesAliasesRequest.class), any(ActionListener.class));
 
         // Verify that no updateSettings call targeted "target-idx" (transient restore was skipped).
         // Source-index calls (restoreRebalance, removeWriteBlock) are expected.
         ArgumentCaptor<UpdateSettingsRequest> settingsCaptor = ArgumentCaptor.forClass(UpdateSettingsRequest.class);
-        verify(mockIndicesAdmin, atLeastOnce()).updateSettings(settingsCaptor.capture(), any(ActionListener.class));
+        verify(mockHandle.indicesAdmin(), atLeastOnce()).updateSettings(settingsCaptor.capture(), any(ActionListener.class));
         for (UpdateSettingsRequest captured : settingsCaptor.getAllValues()) {
             assertFalse(
                 "updateSettings should not have targeted target-idx, but did: " + Arrays.toString(captured.indices()),
@@ -997,7 +979,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             "migration-liveness",
             CoordinatorPhase.ACTIVE,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mockHandle.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,

@@ -7,6 +7,7 @@
  */
 package com.atlassian.opensearch.aosc.service.worker;
 
+import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.service.adaptive.FixedBatchSizeController;
 import com.atlassian.opensearch.aosc.service.bulk.ConcurrentBulkWriter;
@@ -21,7 +22,6 @@ import com.atlassian.opensearch.aosc.utils.ShardHandle;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
-import org.opensearch.client.Client;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.index.Index;
 import org.opensearch.core.index.shard.ShardId;
@@ -105,7 +105,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             NullPointerException.class,
             () -> new TranslogReplayEngine(
                 AoscLogger.create(TranslogReplayEngine.class),
-                createWriter(mock(Client.class)),
+                createWriter(dummyHelper()),
                 null,
                 "target",
                 IdentityTransformFunction.INSTANCE,
@@ -126,7 +126,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             NullPointerException.class,
             () -> new TranslogReplayEngine(
                 AoscLogger.create(TranslogReplayEngine.class),
-                createWriter(mock(Client.class)),
+                createWriter(dummyHelper()),
                 shardHandle,
                 "target",
                 null,
@@ -144,12 +144,12 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testDoubleStartReplayRangeThrowsIllegalStateException() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(
             new ListSnapshot(Collections.emptyList())
         );
 
-        TranslogReplayEngine engine = createEngine(client, shard);
+        TranslogReplayEngine engine = createEngine(helper, shard);
         engine.replayRange(0, -1); // first call succeeds
         // Second call throws — engine is single-use
         expectThrows(IllegalStateException.class, () -> engine.replayRange(0, -1));
@@ -159,12 +159,12 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testStartCallbackFiresOnReplayRange() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
         mockSnapshotWithOps(shard); // 3 INDEX ops at seqNo 10,11,12
 
         AtomicBoolean callbackFired = new AtomicBoolean(false);
 
-        TranslogReplayEngine engine = createEngine(client, shard, (from, to) -> callbackFired.set(true), null);
+        TranslogReplayEngine engine = createEngine(helper, shard, (from, to) -> callbackFired.set(true), null);
 
         assertFalse("Callback should not fire before start", callbackFired.get());
         CompletableFuture<ReplayResult> future = engine.replayRange(10, 12);
@@ -174,12 +174,12 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testStartCallbackFiresExactlyOnceOnReplayRange() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
         mockSnapshotWithOps(shard);
 
         AtomicInteger callCount = new AtomicInteger(0);
 
-        TranslogReplayEngine engine = createEngine(client, shard, (from, to) -> callCount.incrementAndGet(), null);
+        TranslogReplayEngine engine = createEngine(helper, shard, (from, to) -> callCount.incrementAndGet(), null);
 
         engine.replayRange(10, 12).get(5, TimeUnit.SECONDS);
         try {
@@ -194,7 +194,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         IndexShard shard = mockShard();
         AtomicBoolean callbackFired = new AtomicBoolean(false);
 
-        TranslogReplayEngine engine = createEngine(mock(Client.class), shard, (from, to) -> callbackFired.set(true), null);
+        TranslogReplayEngine engine = createEngine(dummyHelper(), shard, (from, to) -> callbackFired.set(true), null);
 
         engine.cancel();
         assertFalse("startCallback should not fire when only cancel() is called", callbackFired.get());
@@ -204,7 +204,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testReplayRangeEmptyWhenFromExceedsTo() throws Exception {
         IndexShard shard = mockShard();
-        TranslogReplayEngine engine = createEngine(mock(Client.class), shard);
+        TranslogReplayEngine engine = createEngine(dummyHelper(), shard);
 
         CompletableFuture<ReplayResult> future = engine.replayRange(100, 50);
         ReplayResult result = future.get(5, TimeUnit.SECONDS);
@@ -216,7 +216,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testReplayRangeEmptyWhenBothNegative() throws Exception {
         IndexShard shard = mockShard();
-        TranslogReplayEngine engine = createEngine(mock(Client.class), shard);
+        TranslogReplayEngine engine = createEngine(dummyHelper(), shard);
 
         CompletableFuture<ReplayResult> future = engine.replayRange(-1, -1);
         ReplayResult result = future.get(5, TimeUnit.SECONDS);
@@ -228,10 +228,10 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testReplayRangeWithIndexOps() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
         mockSnapshotWithOps(shard); // 3 INDEX ops at seqNo 10,11,12
 
-        TranslogReplayEngine engine = createEngine(client, shard);
+        TranslogReplayEngine engine = createEngine(helper, shard);
 
         CompletableFuture<ReplayResult> future = engine.replayRange(10, 12);
         ReplayResult result = future.get(5, TimeUnit.SECONDS);
@@ -245,7 +245,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testReplayRangeWithMixedOps() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
 
         List<Translog.Operation> ops = new ArrayList<>();
         ops.add(makeIndexOp("doc1", 10, "{\"field\":\"value1\"}"));
@@ -255,7 +255,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
 
-        TranslogReplayEngine engine = createEngine(client, shard);
+        TranslogReplayEngine engine = createEngine(helper, shard);
 
         CompletableFuture<ReplayResult> future = engine.replayRange(10, 13);
         ReplayResult result = future.get(5, TimeUnit.SECONDS);
@@ -269,8 +269,6 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testReplayRangeWithOnlyNoOps() throws Exception {
         IndexShard shard = mockShard();
-        // No bulk client mock needed — should not submit bulk for NO_OPs only
-        Client client = mock(Client.class);
 
         List<Translog.Operation> ops = new ArrayList<>();
         ops.add(new Translog.NoOp(10, 1, "gap-fill-1"));
@@ -278,7 +276,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
 
-        TranslogReplayEngine engine = createEngine(client, shard);
+        TranslogReplayEngine engine = createEngine(dummyHelper(), shard);
 
         CompletableFuture<ReplayResult> future = engine.replayRange(10, 11);
         ReplayResult result = future.get(5, TimeUnit.SECONDS);
@@ -291,7 +289,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testProgressCallbackFiresWithCorrectValues() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
         mockSnapshotWithOps(shard); // 3 INDEX ops
 
         List<long[]> progressUpdates = Collections.synchronizedList(new ArrayList<>());
@@ -299,7 +297,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             progressUpdates.add(new long[] { opsReplayed, opsSkipped, lastSeqNo });
         };
 
-        TranslogReplayEngine engine = createEngine(client, shard, null, progressCallback);
+        TranslogReplayEngine engine = createEngine(helper, shard, null, progressCallback);
 
         engine.replayRange(10, 12).get(5, TimeUnit.SECONDS);
 
@@ -315,7 +313,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
     public void testProgressCallbackFiresPerBatch() throws Exception {
         IndexShard shard = mockShard();
         ShardHandle shardHandle = new ShardHandle(AoscLogger.create(ShardHandle.class), shard, threadPool);
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
 
         // Create 5 ops but with batchSize=2 → should need 3 batches (2+2+1)
         List<Translog.Operation> ops = new ArrayList<>();
@@ -329,7 +327,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
         TranslogReplayEngine engine = new TranslogReplayEngine(
             AoscLogger.create(TranslogReplayEngine.class),
-            createWriter(client, 2),
+            createWriter(helper, 2),
             shardHandle,
             "target",
             IdentityTransformFunction.INSTANCE,
@@ -343,10 +341,6 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
         engine.replayRange(10, 14).get(5, TimeUnit.SECONDS);
 
-        // Progress fires on each batch completion + final completion callback (from finishedFuture.whenComplete)
-        // 3 batches → 3 notifyProgress calls + 1 final from whenComplete = 4
-        // But the exact number depends on empty-batch termination check.
-        // At minimum, there should be more than 1 call (proving it fires per batch, not just at end)
         assertTrue(
             "Progress should fire multiple times for multi-batch replay, got " + progressCallCount.get(),
             progressCallCount.get() >= 3
@@ -357,7 +351,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testCancelBeforeStartThrowsOnReplayRange() {
         IndexShard shard = mockShard();
-        TranslogReplayEngine engine = createEngine(mock(Client.class), shard);
+        TranslogReplayEngine engine = createEngine(dummyHelper(), shard);
 
         engine.cancel();
 
@@ -365,6 +359,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         expectThrows(IllegalStateException.class, () -> engine.replayRange(0, 10));
     }
 
+    @SuppressWarnings("unchecked")
     public void testCancelMidReplayStopsProcessing() throws Exception {
         IndexShard shard = mockShard();
         ShardHandle shardHandle = new ShardHandle(AoscLogger.create(ShardHandle.class), shard, threadPool);
@@ -379,11 +374,10 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         AtomicLong opsReported = new AtomicLong(0);
 
         // Mock client that cancels the engine after first bulk
-        Client client = mock(Client.class);
+        var client = MockClientFactory.mockClient();
         TranslogReplayEngine[] engineHolder = new TranslogReplayEngine[1];
 
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked")
             ActionListener<BulkResponse> listener = invocation.getArgument(1);
             // Cancel after first bulk completes
             if (engineHolder[0] != null) {
@@ -393,9 +387,11 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             return null;
         }).when(client).bulk(any(BulkRequest.class), any());
 
+        var helper = AsyncClientHelper.wrap(client);
+
         TranslogReplayEngine engine = new TranslogReplayEngine(
             AoscLogger.create(TranslogReplayEngine.class),
-            createWriter(client, 10),
+            createWriter(helper, 10),
             shardHandle,
             "target",
             IdentityTransformFunction.INSTANCE,
@@ -428,7 +424,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     public void testResultToSeqNoIsAuthoritativeNotLastProcessed() throws Exception {
         IndexShard shard = mockShard();
-        Client client = mockBulkClient();
+        var helper = mockBulkHelper();
 
         // Only 2 ops but toSeqNo is 100 — result.toSeqNo must be 100, not the last op's seqNo
         List<Translog.Operation> ops = new ArrayList<>();
@@ -437,7 +433,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
 
-        TranslogReplayEngine engine = createEngine(client, shard);
+        TranslogReplayEngine engine = createEngine(helper, shard);
         ReplayResult result = engine.replayRange(10, 100).get(5, TimeUnit.SECONDS);
 
         assertEquals("targetSeqNo should be the requested range end, not the last processed op", 100, result.targetSeqNo());
@@ -451,7 +447,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             new IOException("snapshot failed")
         );
 
-        TranslogReplayEngine engine = createEngine(mock(Client.class), shard);
+        TranslogReplayEngine engine = createEngine(dummyHelper(), shard);
 
         CompletableFuture<ReplayResult> future = engine.replayRange(0, 10);
         assertTrue(future.isCompletedExceptionally());
@@ -469,33 +465,24 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
 
     // ---- Lifecycle and cleanup (B008) ----
 
-    /**
-     * Verifies cancel before start doesn't crash and returns a completed future.
-     */
     public void testCancelBeforeStartReturnsCompletedFuture() {
-        TranslogReplayEngine engine = createEngine(mock(Client.class), mockShard());
+        TranslogReplayEngine engine = createEngine(dummyHelper(), mockShard());
         CompletableFuture<ReplayResult> future = engine.cancel();
         assertTrue("Future should be done after cancel", future.isDone());
         assertTrue("Future should be completed exceptionally", future.isCompletedExceptionally());
     }
 
-    /**
-     * Verifies cancel is idempotent — returns the same future on multiple calls.
-     */
     public void testCancelReturnsSameFuture() {
-        TranslogReplayEngine engine = createEngine(mock(Client.class), mockShard());
+        TranslogReplayEngine engine = createEngine(dummyHelper(), mockShard());
         CompletableFuture<ReplayResult> f1 = engine.cancel();
         CompletableFuture<ReplayResult> f2 = engine.cancel();
         assertSame("cancel() should return the same future", f1, f2);
     }
 
-    /**
-     * Verifies progressCallback fires on cancel (terminal reporting).
-     */
     public void testProgressCallbackFiresOnCancel() {
         AtomicBoolean progressCalled = new AtomicBoolean(false);
         TranslogReplayEngine engine = createEngine(
-            mock(Client.class),
+            dummyHelper(),
             new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
             null,
             (replayed, skipped, lastSeqNo, targetSeqNo, round) -> progressCalled.set(true)
@@ -504,9 +491,6 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         assertTrue("Progress callback should fire on cancel (terminal)", progressCalled.get());
     }
 
-    /**
-     * Verifies progressCallback fires on start failure (terminal reporting).
-     */
     public void testProgressCallbackFiresOnFailure() throws Exception {
         AtomicBoolean progressCalled = new AtomicBoolean(false);
         IndexShard shard = mockShard();
@@ -515,7 +499,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         );
 
         TranslogReplayEngine engine = createEngine(
-            mock(Client.class),
+            dummyHelper(),
             shard,
             null,
             (replayed, skipped, lastSeqNo, targetSeqNo, round) -> progressCalled.set(true)
@@ -525,9 +509,6 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         assertTrue("Progress callback should fire on failure (terminal)", progressCalled.get());
     }
 
-    /**
-     * Verifies snapshot is closed on successful replay completion.
-     */
     public void testSnapshotClosedOnSuccess() throws Exception {
         AtomicBoolean snapshotClosed = new AtomicBoolean(false);
         IndexShard shard = mockShard();
@@ -542,18 +523,13 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         };
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(trackingSnapshot);
 
-        TranslogReplayEngine engine = createEngine(mockBulkClient(), shard);
+        TranslogReplayEngine engine = createEngine(mockBulkHelper(), shard);
         CompletableFuture<ReplayResult> future = engine.replayRange(10, 10);
         ReplayResult result = future.get(5, TimeUnit.SECONDS);
         assertNotNull(result);
-        // Snapshot is closed via future.whenComplete() which may execute asynchronously
-        // after future.complete() — allow a brief window for the callback to fire.
         assertBusy(() -> assertTrue("Snapshot should be closed after successful replay", snapshotClosed.get()));
     }
 
-    /**
-     * Verifies snapshot is closed when snapshot.next() throws IOException.
-     */
     public void testSnapshotClosedOnReadFailure() throws Exception {
         AtomicBoolean snapshotClosed = new AtomicBoolean(false);
         IndexShard shard = mockShard();
@@ -576,7 +552,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         };
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(failingSnapshot);
 
-        TranslogReplayEngine engine = createEngine(mockBulkClient(), shard);
+        TranslogReplayEngine engine = createEngine(mockBulkHelper(), shard);
         CompletableFuture<ReplayResult> future = engine.replayRange(10, 10);
         try {
             future.get(5, TimeUnit.SECONDS);
@@ -585,8 +561,6 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             // expected
         }
         assertTrue("Future should complete exceptionally", future.isCompletedExceptionally());
-        // Snapshot is closed via future.whenComplete() which may execute asynchronously
-        // after future.completeExceptionally() — allow a brief window for the callback to fire.
         assertBusy(() -> assertTrue("Snapshot should be closed on read failure", snapshotClosed.get()));
     }
 
@@ -598,23 +572,26 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         return shard;
     }
 
-    /** Creates a standard engine with no start/progress callbacks and default batchSize. */
-    private TranslogReplayEngine createEngine(Client client, IndexShard shard) {
-        return createEngine(client, new ShardHandle(AoscLogger.create(ShardHandle.class), shard, threadPool), null, null);
+    private static AsyncClientHelper dummyHelper() {
+        return AsyncClientHelper.wrap(MockClientFactory.mockClient());
     }
 
-    private TranslogReplayEngine createEngine(Client client, ShardHandle shardHandle) {
-        return createEngine(client, shardHandle, null, null);
+    private TranslogReplayEngine createEngine(AsyncClientHelper helper, IndexShard shard) {
+        return createEngine(helper, new ShardHandle(AoscLogger.create(ShardHandle.class), shard, threadPool), null, null);
+    }
+
+    private TranslogReplayEngine createEngine(AsyncClientHelper helper, ShardHandle shardHandle) {
+        return createEngine(helper, shardHandle, null, null);
     }
 
     private TranslogReplayEngine createEngine(
-        Client client,
+        AsyncClientHelper helper,
         IndexShard shard,
         TranslogReplayEngine.StartCallback startCallback,
         TranslogReplayEngine.ProgressCallback progressCallback
     ) {
         return createEngine(
-            client,
+            helper,
             new ShardHandle(AoscLogger.create(ShardHandle.class), shard, threadPool),
             startCallback,
             progressCallback
@@ -622,14 +599,14 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
     }
 
     private TranslogReplayEngine createEngine(
-        Client client,
+        AsyncClientHelper helper,
         ShardHandle shardHandle,
         TranslogReplayEngine.StartCallback startCallback,
         TranslogReplayEngine.ProgressCallback progressCallback
     ) {
         return new TranslogReplayEngine(
             AoscLogger.create(TranslogReplayEngine.class),
-            createWriter(client),
+            createWriter(helper),
             shardHandle,
             "target",
             IdentityTransformFunction.INSTANCE,
@@ -642,8 +619,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         );
     }
 
-    /** Creates a ConcurrentBulkWriter with W=1 and the given batch size. */
-    private ConcurrentBulkWriter createWriter(Client client, int batchSize) {
+    private ConcurrentBulkWriter createWriter(AsyncClientHelper helper, int batchSize) {
         AoscLogger logger = AoscLogger.create(TranslogReplayEngineTests.class);
         SimpleWriteController controller = new SimpleWriteController(
             logger,
@@ -652,27 +628,24 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             () -> 100_000_000L,
             new OverloadBackoff(() -> 2_000L, () -> 120_000L, () -> 50)
         );
-        return new ConcurrentBulkWriter(AsyncClientHelper.wrap(client), threadPool, controller, logger);
+        return new ConcurrentBulkWriter(helper, threadPool, controller, logger);
     }
 
-    /** Creates a ConcurrentBulkWriter with W=1 and default batch size of 500. */
-    private ConcurrentBulkWriter createWriter(Client client) {
-        return createWriter(client, 500);
+    private ConcurrentBulkWriter createWriter(AsyncClientHelper helper) {
+        return createWriter(helper, 500);
     }
 
-    /** Creates a mock Client that immediately succeeds all bulk requests. */
-    private Client mockBulkClient() {
-        Client client = mock(Client.class);
+    @SuppressWarnings("unchecked")
+    private static AsyncClientHelper mockBulkHelper() {
+        var client = MockClientFactory.mockClient();
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked")
             ActionListener<BulkResponse> listener = invocation.getArgument(1);
             listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1));
             return null;
         }).when(client).bulk(any(BulkRequest.class), any());
-        return client;
+        return AsyncClientHelper.wrap(client);
     }
 
-    /** Sets up the shard mock to return a snapshot with 3 INDEX ops at seqNo 10, 11, 12. */
     private void mockSnapshotWithOps(IndexShard shard) throws IOException {
         List<Translog.Operation> ops = new ArrayList<>();
         ops.add(makeIndexOp("doc1", 10, "{\"field\":\"value1\"}"));
@@ -681,15 +654,10 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
     }
 
-    /** Helper to create a Translog.Index operation with JSON source. */
     private static Translog.Index makeIndexOp(String id, long seqNo, String jsonSource) {
         return new Translog.Index(id, seqNo, 1, jsonSource.getBytes(StandardCharsets.UTF_8));
     }
 
-    /**
-     * Simple Translog.Snapshot backed by a list — returns ops in order then null.
-     * Allows testing replay logic without a real translog.
-     */
     private static class ListSnapshot implements Translog.Snapshot {
         private final List<Translog.Operation> ops;
         private int index = 0;

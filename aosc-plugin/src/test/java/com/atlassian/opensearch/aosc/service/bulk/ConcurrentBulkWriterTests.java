@@ -7,6 +7,7 @@
  */
 package com.atlassian.opensearch.aosc.service.bulk;
 
+import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.service.bulk.ThreadSafeDocSourceTests.TestMetrics;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
 import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
@@ -21,7 +22,6 @@ import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
-import org.opensearch.transport.client.Client;
 
 import java.util.Collections;
 import java.util.List;
@@ -90,7 +90,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         expectThrows(
             IllegalArgumentException.class,
             () -> new ConcurrentBulkWriter(
-                AsyncClientHelper.wrap(mock(Client.class)),
+                AsyncClientHelper.wrap(MockClientFactory.mockClient()),
                 mockThreadPool(),
                 badController,
                 AoscLogger.create(ConcurrentBulkWriter.class)
@@ -109,7 +109,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         expectThrows(
             NullPointerException.class,
             () -> new ConcurrentBulkWriter(
-                AsyncClientHelper.wrap(mock(Client.class)),
+                AsyncClientHelper.wrap(MockClientFactory.mockClient()),
                 mockThreadPool(),
                 null,
                 AoscLogger.create(ConcurrentBulkWriter.class)
@@ -130,9 +130,9 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     // ---- new tests for write pipeline ----
 
     public void testSingleDocWriteCompletesSuccessfully() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             mockController(),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -149,9 +149,9 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testMultipleDocsConsumedSequentially() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             mockController(),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -168,13 +168,13 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testFatalDecisionCompletesExceptionally() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         WriteController controller = mockController();
 
         when(controller.handleOutcome(any())).thenReturn(WriteDecision.fatal("Test fatal error"));
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -192,7 +192,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testConcurrencyDeltaAdjustsEffectiveW() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger currentW = new AtomicInteger(1);
         WriteController controller = mock(WriteController.class);
         when(controller.nextBatchSize()).thenReturn(1);
@@ -204,7 +204,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -217,7 +217,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testConcurrencyFloorAtOne() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger currentW = new AtomicInteger(2);
         WriteController controller = mock(WriteController.class);
         when(controller.nextBatchSize()).thenReturn(1);
@@ -229,7 +229,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -242,9 +242,9 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testConcurrentWritersWithHighW() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             mockController(4),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -261,12 +261,12 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testProgressCallbackCalledForEachBatch() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         WriteController controller = mockController();
         when(controller.nextBatchSize()).thenReturn(1);
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -284,7 +284,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     // ---- PAUSE_AND_RETRY / drain-resume ----
 
     public void testPauseAndRetryRequeuesOpsAndEventuallyCompletes() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         AtomicInteger retryCount = new AtomicInteger();
 
@@ -302,7 +302,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -321,7 +321,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testPauseAndRetryWithConcurrencyReductionDrainsInflight() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         AtomicInteger currentW = new AtomicInteger(3);
 
@@ -339,7 +339,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -356,7 +356,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testMultipleConsecutiveOverloadsStillComplete() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         AtomicInteger overloadCount = new AtomicInteger();
 
@@ -375,7 +375,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -393,7 +393,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
     }
 
     public void testConcurrencyRampsUpThenDownViaDeltas() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         AtomicInteger maxObservedW = new AtomicInteger(1);
         AtomicInteger currentW = new AtomicInteger(1);
@@ -413,13 +413,13 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
         );
         DocSource<TestMetrics> source = sourceOf(op("1"), op("2"), op("3"), op("4"), op("5"), op("6"), op("7"), op("8"));
-        AtomicInteger progressCount = new AtomicInteger();
+        AtomicInteger progressCount = new AtomicInteger(0);
 
         CompletableFuture<Void> future = writer.consumeAsync(source, batch -> {
             progressCount.incrementAndGet();
@@ -440,7 +440,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * making the pause a no-op and exhausting max_consecutive_failures in seconds.
      */
     public void testOverloadPauseActuallyDelaysNextDispatch() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         long pauseMs = 500;
 
@@ -457,7 +457,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -483,7 +483,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * in flight when the overload occurs.
      */
     public void testOverloadPauseWithHighConcurrency() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         long pauseMs = 500;
 
@@ -500,7 +500,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -526,7 +526,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * of all pause durations.
      */
     public void testMultipleConsecutiveOverloadPausesAreAllApplied() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         int overloadCount = 3;
         long pauseMs = 300;
@@ -544,7 +544,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -580,7 +580,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * pauses being applied, not near-zero as the buggy code would do.
      */
     public void testAllBatchesOverloadWithHighConcurrency() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         int maxOverloads = 4;
         long pauseMs = 300;
@@ -598,7 +598,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -634,7 +634,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * not an earlier shorter one.
      */
     public void testEscalatingPauseDurationsApplyLongest() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         long shortPause = 200;
         long longPause = 600;
@@ -651,7 +651,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -685,7 +685,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * skipping any, and still completes all ops.
      */
     public void testInterleavedOverloadAndSuccessWithManyOps() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         AtomicInteger progressCount = new AtomicInteger();
         long pauseMs = 200;
@@ -704,7 +704,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -754,7 +754,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
      * The writer should not block for the full pause duration after cancel.
      */
     public void testCancelInterruptsOverloadPause() throws Exception {
-        Client client = mockClientWithBulkResponse();
+        var helper = mockClientWithBulkResponse();
         AtomicInteger handleCount = new AtomicInteger();
         long longPauseMs = 10_000; // 10 seconds — we should NOT wait this long
 
@@ -771,7 +771,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         });
 
         ConcurrentBulkWriter writer = new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(client),
+            helper,
             mockThreadPool(),
             controller,
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -799,7 +799,7 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
 
     private ConcurrentBulkWriter writer(int concurrency) {
         return new ConcurrentBulkWriter(
-            AsyncClientHelper.wrap(mockClientWithBulkResponse()),
+            mockClientWithBulkResponse(),
             mockThreadPool(),
             mockController(concurrency),
             AoscLogger.create(ConcurrentBulkWriter.class)
@@ -840,18 +840,18 @@ public class ConcurrentBulkWriterTests extends OpenSearchTestCase {
         return tp;
     }
 
-    private static Client mockClientWithBulkResponse() {
-        Client client = mock(Client.class);
+    @SuppressWarnings("unchecked")
+    private static AsyncClientHelper mockClientWithBulkResponse() {
+        var client = MockClientFactory.mockClient();
         doAnswer(invocation -> {
             BulkRequest request = invocation.getArgument(0);
-            @SuppressWarnings("unchecked")
             ActionListener<BulkResponse> listener = invocation.getArgument(1);
             BulkResponse response = new BulkResponse(new BulkItemResponse[0], 10);
             listener.onResponse(response);
             return null;
         }).when(client).bulk(any(BulkRequest.class), any());
 
-        return client;
+        return AsyncClientHelper.wrap(client);
     }
 
     private static DocSource<TestMetrics> emptySource() {

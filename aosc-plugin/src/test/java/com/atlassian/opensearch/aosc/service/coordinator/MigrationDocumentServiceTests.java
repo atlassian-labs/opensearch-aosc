@@ -7,6 +7,7 @@
  */
 package com.atlassian.opensearch.aosc.service.coordinator;
 
+import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.model.MigrationDocument;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
@@ -20,7 +21,6 @@ import org.opensearch.action.admin.indices.mapping.put.PutMappingRequest;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.action.index.IndexResponse;
-import org.opensearch.action.support.clustermanager.AcknowledgedResponse;
 import org.opensearch.common.settings.Settings;
 import org.opensearch.common.util.concurrent.ThreadContext;
 import org.opensearch.core.action.ActionListener;
@@ -28,9 +28,6 @@ import org.opensearch.core.index.shard.ShardId;
 import org.opensearch.index.engine.VersionConflictEngineException;
 import org.opensearch.test.OpenSearchTestCase;
 import org.opensearch.threadpool.ThreadPool;
-import org.opensearch.transport.client.AdminClient;
-import org.opensearch.transport.client.Client;
-import org.opensearch.transport.client.IndicesAdminClient;
 
 import java.util.Map;
 import java.util.concurrent.CompletableFuture;
@@ -75,55 +72,45 @@ public class MigrationDocumentServiceTests extends OpenSearchTestCase {
 
     // ---- B047: createMigrationDocument must be idempotent across CM failover ----
 
-    /**
-     * Regression test for B047: when the previous CM persisted the migration document
-     * and then died before publishing the {@code INITIALIZING → ACTIVE} cluster-state
-     * update, the new CM re-enters {@code onInitializing} via {@code justBecameCM} and
-     * tries to create the same document again. The service must treat the resulting
-     * {@link VersionConflictEngineException} as success rather than failing the
-     * migration.
-     */
+    @SuppressWarnings("unchecked")
     public void testCreateMigrationDocumentSwallowsVersionConflictOnReentry() throws Exception {
-        Client client = mockClient();
+        var handle = mockHandleWithThreadPool();
         AtomicInteger calls = new AtomicInteger();
         doAnswer((InvocationOnMock invocation) -> {
             ActionListener<IndexResponse> listener = invocation.getArgument(1);
             int call = calls.incrementAndGet();
             if (call == 1) {
-                // Simulate the first CM successfully creating the document.
                 listener.onResponse(mock(IndexResponse.class));
             } else {
-                // Simulate the second CM hitting create=true after failover.
                 listener.onFailure(
                     new VersionConflictEngineException(new ShardId(".aosc-migrations", "_na_", 0), "mig-1", "document already exists")
                 );
             }
             return null;
-        }).when(client).index(any(IndexRequest.class), any());
+        }).when(handle.client()).index(any(IndexRequest.class), any());
 
-        MigrationDocumentService service = newService(client);
+        var service = newService(handle.helper());
 
         MigrationDocument doc = newDocument("mig-1");
 
-        // First create succeeds.
         MigrationDocument first = await(service.createMigrationDocument(doc));
         assertEquals("mig-1", first.migrationId());
 
-        // Second create (post-failover re-entry) must NOT throw — must return the same doc.
         MigrationDocument second = await(service.createMigrationDocument(doc));
         assertEquals("mig-1", second.migrationId());
         assertEquals(2, calls.get());
     }
 
+    @SuppressWarnings("unchecked")
     public void testCreateMigrationDocumentPropagatesNonVersionConflictErrors() {
-        Client client = mockClient();
+        var handle = mockHandleWithThreadPool();
         doAnswer((InvocationOnMock invocation) -> {
             ActionListener<IndexResponse> listener = invocation.getArgument(1);
             listener.onFailure(new RuntimeException("boom"));
             return null;
-        }).when(client).index(any(IndexRequest.class), any());
+        }).when(handle.client()).index(any(IndexRequest.class), any());
 
-        MigrationDocumentService service = newService(client);
+        var service = newService(handle.helper());
         MigrationDocument doc = newDocument("mig-2");
 
         ExecutionException ex = expectThrows(ExecutionException.class, () -> service.createMigrationDocument(doc).get(5, TimeUnit.SECONDS));
@@ -133,56 +120,40 @@ public class MigrationDocumentServiceTests extends OpenSearchTestCase {
 
     // ---- Schema enforcement on an already-existing index ----
 
-    /**
-     * When {@code .aosc-migrations} already exists, {@code ensureIndexExists()} enforces the schema.
-     * It must reconcile the dynamically-updatable {@code auto_expand_replicas} setting (so indices
-     * created with 0 replicas by an older plugin become resilient) in addition to the mappings.
-     */
-    @SuppressWarnings("unchecked")
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     public void testEnforceSchemaReconcilesAutoExpandReplicasOnExistingIndex() throws Exception {
-        Client client = mockClient();
-        AdminClient admin = mock(AdminClient.class);
-        IndicesAdminClient indices = mock(IndicesAdminClient.class);
-        when(client.admin()).thenReturn(admin);
-        when(admin.indices()).thenReturn(indices);
+        var handle = mockHandleWithThreadPool();
 
         // Index already exists -> triggers enforceSchema.
         doAnswer(inv -> {
-            ((ActionListener<Object>) inv.getArgument(1)).onFailure(
-                new ResourceAlreadyExistsException("index .aosc-migrations already exists")
-            );
+            ((ActionListener) inv.getArgument(1)).onFailure(new ResourceAlreadyExistsException("index .aosc-migrations already exists"));
             return null;
-        }).when(indices).create(any(CreateIndexRequest.class), any());
+        }).when(handle.indicesAdmin()).create(any(CreateIndexRequest.class), any());
 
         AtomicReference<UpdateSettingsRequest> settingsReq = new AtomicReference<>();
         doAnswer(inv -> {
             settingsReq.set(inv.getArgument(0));
-            ((ActionListener<AcknowledgedResponse>) inv.getArgument(1)).onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = inv.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(indices).updateSettings(any(UpdateSettingsRequest.class), any());
+        }).when(handle.indicesAdmin()).updateSettings(any(UpdateSettingsRequest.class), any());
 
         AtomicInteger putMappingCalls = new AtomicInteger();
         doAnswer(inv -> {
             putMappingCalls.incrementAndGet();
-            ((ActionListener<AcknowledgedResponse>) inv.getArgument(1)).onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = inv.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(indices).putMapping(any(PutMappingRequest.class), any());
+        }).when(handle.indicesAdmin()).putMapping(any(PutMappingRequest.class), any());
 
-        await(newService(client).ensureIndexExists());
+        await(newService(handle.helper()).ensureIndexExists());
 
         assertNotNull("enforceSchema must issue an updateSettings on the existing index", settingsReq.get());
         assertEquals("0-1", settingsReq.get().settings().get("index.auto_expand_replicas"));
-        // Static create-time settings must not be pushed to a live index.
         assertNull("number_of_shards is static and must not be reconciled", settingsReq.get().settings().get("index.number_of_shards"));
         assertEquals("mappings must still be enforced", 1, putMappingCalls.get());
     }
 
-    /**
-     * The reconcilable-settings extraction keeps every dynamic setting — resolving both flat and
-     * nested JSON forms — and drops only the non-idempotent (static, create-time) ones.
-     */
     public void testReconcilableSettingsKeepsDynamicAndDropsNonIdempotent() {
         Settings flat = MigrationDocumentService.reconcilableSettings(
             Map.of("index.number_of_shards", 1, "index.auto_expand_replicas", "0-1", "index.hidden", true)
@@ -203,17 +174,17 @@ public class MigrationDocumentServiceTests extends OpenSearchTestCase {
 
     // ---- helpers ----
 
-    private static MigrationDocumentService newService(Client client) {
-        return new MigrationDocumentService(AoscLogger.create(MigrationDocumentService.class), AsyncClientHelper.wrap(client));
+    private static MigrationDocumentService newService(AsyncClientHelper helper) {
+        return new MigrationDocumentService(AoscLogger.create(MigrationDocumentService.class), helper);
     }
 
-    private static Client mockClient() {
-        Client client = mock(Client.class);
+    private static MockClientFactory.Handle mockHandleWithThreadPool() {
+        var handle = MockClientFactory.createHandle();
         ThreadContext threadContext = new ThreadContext(Settings.EMPTY);
-        org.opensearch.threadpool.ThreadPool threadPool = mock(ThreadPool.class);
+        ThreadPool threadPool = mock(ThreadPool.class);
         when(threadPool.getThreadContext()).thenReturn(threadContext);
-        when(client.threadPool()).thenReturn(threadPool);
-        return client;
+        when(handle.client().threadPool()).thenReturn(threadPool);
+        return handle;
     }
 
     private static MigrationDocument newDocument(String id) {

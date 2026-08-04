@@ -9,6 +9,7 @@ package com.atlassian.opensearch.aosc.service.coordinator;
 
 import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.AoscTestUtil;
+import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState;
 import com.atlassian.opensearch.aosc.model.MigrationDocument;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
@@ -17,16 +18,11 @@ import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
 import com.atlassian.opensearch.aosc.model.transform.InlineTransformScript;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
-import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 
 import com.carrotsearch.randomizedtesting.annotations.ThreadLeakScope;
 
 import org.opensearch.action.admin.indices.alias.IndicesAliasesRequest;
 import org.opensearch.action.admin.indices.settings.put.UpdateSettingsRequest;
-import org.opensearch.action.support.master.AcknowledgedResponse;
-import org.opensearch.client.AdminClient;
-import org.opensearch.client.Client;
-import org.opensearch.client.IndicesAdminClient;
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.service.ClusterService;
 import org.opensearch.common.settings.ClusterSettings;
@@ -54,41 +50,33 @@ import static org.mockito.Mockito.when;
 @ThreadLeakScope(ThreadLeakScope.Scope.NONE)
 public class MigrationCoordinatorCutoverCancelTests extends OpenSearchTestCase {
 
-    private Client mockClient;
+    private MockClientFactory.Handle mock;
     private ClusterService mockClusterService;
     private ThreadPool mockThreadPool;
     private MigrationDocumentService mockMigrationDocumentService;
 
+    @SuppressWarnings({ "unchecked", "rawtypes" })
     @Override
     public void setUp() throws Exception {
         super.setUp();
-        mockClient = mock(Client.class);
+        mock = MockClientFactory.createHandle();
         mockClusterService = mock(ClusterService.class);
         mockThreadPool = mock(ThreadPool.class);
         mockMigrationDocumentService = mock(MigrationDocumentService.class);
 
-        AdminClient mockAdminClient = mock(AdminClient.class);
-        IndicesAdminClient mockIndicesAdmin = mock(IndicesAdminClient.class);
-        when(mockClient.admin()).thenReturn(mockAdminClient);
-        when(mockAdminClient.indices()).thenReturn(mockIndicesAdmin);
-
         // updateSettings → succeed immediately
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked")
-            ActionListener<AcknowledgedResponse> listener = invocation.getArgument(1);
-            listener.onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = invocation.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(mockIndicesAdmin).updateSettings(any(UpdateSettingsRequest.class), any());
+        }).when(mock.indicesAdmin()).updateSettings(any(UpdateSettingsRequest.class), any());
 
         // aliases → succeed immediately
         doAnswer(invocation -> {
-            @SuppressWarnings("unchecked")
-            ActionListener<AcknowledgedResponse> listener = invocation.getArgument(1);
-            listener.onResponse(new AcknowledgedResponse(true) {
-            });
+            ActionListener listener = invocation.getArgument(1);
+            listener.onResponse(MockClientFactory.acknowledgedResponse(true));
             return null;
-        }).when(mockIndicesAdmin).aliases(any(IndicesAliasesRequest.class), any());
+        }).when(mock.indicesAdmin()).aliases(any(IndicesAliasesRequest.class), any());
 
         ThreadPool.Cancellable mockCancellable = mock(ThreadPool.Cancellable.class);
         when(mockThreadPool.scheduleWithFixedDelay(any(), any(), any())).thenReturn(mockCancellable);
@@ -117,7 +105,7 @@ public class MigrationCoordinatorCutoverCancelTests extends OpenSearchTestCase {
             "cancel-before",
             CoordinatorPhase.COMPLETING,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mock.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,
@@ -150,7 +138,7 @@ public class MigrationCoordinatorCutoverCancelTests extends OpenSearchTestCase {
             "cancel-after",
             CoordinatorPhase.COMPLETING,
             entry,
-            AsyncClientHelper.wrap(mockClient),
+            mock.helper(),
             mockClusterService,
             mockThreadPool,
             mockMigrationDocumentService,

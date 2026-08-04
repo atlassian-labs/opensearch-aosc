@@ -279,8 +279,8 @@ sourceSets {
     itTest {
         java.srcDir 'src/itTest/java'
         resources.srcDir 'src/itTest/resources'
-        compileClasspath += sourceSets.main.output + sourceSets.test.output
-        runtimeClasspath += sourceSets.main.output + sourceSets.test.output
+        compileClasspath += sourceSets.main.output
+        runtimeClasspath += sourceSets.main.output
     }
 }
 

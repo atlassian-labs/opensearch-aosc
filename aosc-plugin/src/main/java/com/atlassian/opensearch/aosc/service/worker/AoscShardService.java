@@ -12,12 +12,12 @@ import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.service.coordinator.AoscCoordinatorService;
+import com.atlassian.opensearch.aosc.service.worker.routing.DeleteOperationRouter;
 import com.atlassian.opensearch.aosc.transform.TransformFactory;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
 import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.LC;
 import com.atlassian.opensearch.aosc.utils.ShardHandle;
-import com.atlassian.opensearch.aosc.utils.SyntheticRoutingHelper;
 
 import org.opensearch.cluster.ClusterChangedEvent;
 import org.opensearch.cluster.ClusterState;
@@ -261,15 +261,20 @@ public class AoscShardService implements ClusterStateListener, IndexEventListene
         IndexMetadata sourceMeta = state.metadata().index(entry.sourceIndex());
 
         MigrationRequestOptions options = entry.options();
+        DeleteOperationRouter deleteOperationRouter = DeleteOperationRouter.forShard(
+            entry.deleteRoutingStrategy(),
+            entry.routingMode(),
+            sourceMeta,
+            targetMeta,
+            primaryShard.shardNum()
+        );
 
         return new ShardMigrationWorker(
             logger,
             entry.migrationId(),
             primaryShard,
             entry.targetIndex(),
-            sourceMeta.getNumberOfShards(),
-            entry.routingMode(),
-            SyntheticRoutingHelper.computeSyntheticRoutings(targetMeta),
+            deleteOperationRouter,
             transformFactory.create(entry.transformScript(), sourceMeta, targetMeta),
             options,
             clientHelper,

@@ -8,20 +8,27 @@
 package com.atlassian.opensearch.aosc.service.worker;
 
 import com.atlassian.opensearch.aosc.compat.MockClientFactory;
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
+import com.atlassian.opensearch.aosc.model.DeletedDoc;
+import com.atlassian.opensearch.aosc.model.IndexDoc;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.service.adaptive.FixedBatchSizeController;
 import com.atlassian.opensearch.aosc.service.bulk.ConcurrentBulkWriter;
 import com.atlassian.opensearch.aosc.service.bulk.OverloadBackoff;
 import com.atlassian.opensearch.aosc.service.bulk.SimpleWriteController;
 import com.atlassian.opensearch.aosc.service.worker.TranslogReplayEngine.ReplayResult;
+import com.atlassian.opensearch.aosc.service.worker.routing.DeleteOperationRouter;
 import com.atlassian.opensearch.aosc.transform.IdentityTransformFunction;
+import com.atlassian.opensearch.aosc.transform.TransformFunction;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
 import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.ShardHandle;
 
+import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.bulk.BulkItemResponse;
 import org.opensearch.action.bulk.BulkRequest;
 import org.opensearch.action.bulk.BulkResponse;
+import org.opensearch.action.delete.DeleteRequest;
 import org.opensearch.core.action.ActionListener;
 import org.opensearch.core.index.Index;
 import org.opensearch.core.index.shard.ShardId;
@@ -43,6 +50,7 @@ import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicInteger;
 import java.util.concurrent.atomic.AtomicLong;
+import java.util.stream.Collectors;
 
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyBoolean;
@@ -90,9 +98,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
                 shardHandle,
                 "target",
                 IdentityTransformFunction.INSTANCE,
-                ShardRoutingMode.BULK_API,
-                1,
-                null,
+                legacyDeleteRouter(),
                 null,
                 null,
                 threadPool
@@ -109,9 +115,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
                 null,
                 "target",
                 IdentityTransformFunction.INSTANCE,
-                ShardRoutingMode.BULK_API,
-                1,
-                null,
+                legacyDeleteRouter(),
                 null,
                 null,
                 threadPool
@@ -130,9 +134,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
                 shardHandle,
                 "target",
                 null,
-                ShardRoutingMode.BULK_API,
-                1,
-                null,
+                legacyDeleteRouter(),
                 null,
                 null,
                 threadPool
@@ -331,9 +333,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             shardHandle,
             "target",
             IdentityTransformFunction.INSTANCE,
-            ShardRoutingMode.BULK_API,
-            1,
-            null,
+            legacyDeleteRouter(),
             null,
             progressCallback,
             threadPool
@@ -395,9 +395,7 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             shardHandle,
             "target",
             IdentityTransformFunction.INSTANCE,
-            ShardRoutingMode.BULK_API,
-            1,
-            null,
+            legacyDeleteRouter(),
             null,
             (r, s, l, t, round) -> opsReported.set(r),
             threadPool
@@ -509,6 +507,147 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
         assertTrue("Progress callback should fire on failure (terminal)", progressCalled.get());
     }
 
+    public void testTransformDropsDoNotSwallowOrStallOtherOps() throws Exception {
+        // A dropped op in the middle, two adjacent drops, and a drop at the end of the snapshot.
+        // Before the fix these respectively swallowed an op, yielded null, and threw.
+        IndexShard shard = mockShard();
+        List<Translog.Operation> ops = new ArrayList<>();
+        ops.add(makeIndexOp("keep-1", 10, "{\"f\":\"v\"}"));
+        ops.add(makeIndexOp("drop-1", 11, "{\"f\":\"v\"}"));
+        ops.add(makeIndexOp("drop-2", 12, "{\"f\":\"v\"}"));
+        ops.add(makeIndexOp("keep-2", 13, "{\"f\":\"v\"}"));
+        ops.add(makeIndexOp("drop-3", 14, "{\"f\":\"v\"}"));
+        when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
+        TransformFunction dropByPrefix = doc -> doc.id().startsWith("drop") ? List.of() : List.of(doc);
+
+        TranslogReplayEngine engine = createEngine(mockBulkHelper(), shard, dropByPrefix, legacyDeleteRouter(), 500, null);
+        ReplayResult result = engine.replayRange(10, 14).get(5, TimeUnit.SECONDS);
+
+        assertEquals(2, result.operationsReplayed());
+        assertEquals(3, result.operationsSkipped());
+        assertEquals(14, result.lastProcessedSeqNo());
+    }
+
+    public void testIndexOpsCarryTheSourceShardNumber() throws Exception {
+        IndexShard shard = mock(IndexShard.class);
+        when(shard.shardId()).thenReturn(new ShardId(new Index("test-index", "uuid"), 3));
+        when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(
+            new ListSnapshot(List.of(makeIndexOp("doc1", 10, "{\"field\":\"value1\"}")))
+        );
+        List<IndexDoc> seen = Collections.synchronizedList(new ArrayList<>());
+        TransformFunction capturing = doc -> {
+            seen.add(doc);
+            return List.of(doc);
+        };
+
+        createEngine(mockBulkHelper(), shard, capturing, legacyDeleteRouter(), 500, null).replayRange(10, 10).get(5, TimeUnit.SECONDS);
+
+        assertEquals(3, seen.get(0).sourceShardId());
+    }
+
+    public void testFanOutDeleteAdvancesProgressOnlyAfterItsLastRequest() throws Exception {
+        IndexShard shard = mockShard();
+        List<Translog.Operation> ops = List.of(new Translog.Delete("doc", 20, 1));
+        when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
+        DeleteOperationRouter splitRouter = new DeleteOperationRouter(
+            DeleteRoutingStrategy.SHARD_TOPOLOGY,
+            ShardRoutingMode.SPLIT_SHARD,
+            2,
+            new String[] { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7" },
+            1
+        );
+        List<long[]> progress = Collections.synchronizedList(new ArrayList<>());
+
+        // Batch size 2 splits the delete's 4 fan-out requests across two batches.
+        TranslogReplayEngine engine = createEngine(
+            mockBulkHelper(),
+            shard,
+            IdentityTransformFunction.INSTANCE,
+            splitRouter,
+            2,
+            (replayed, skipped, lastSeqNo, targetSeqNo, round) -> progress.add(new long[] { replayed, lastSeqNo })
+        );
+        ReplayResult result = engine.replayRange(20, 20).get(5, TimeUnit.SECONDS);
+
+        assertEquals(1, result.operationsReplayed());
+        assertEquals(20, result.lastProcessedSeqNo());
+        long[] afterFirstBatch = progress.get(0);
+        assertEquals("first request counts the op once", 1, afterFirstBatch[0]);
+        assertEquals("progress stays before the op until its last request is written", 19, afterFirstBatch[1]);
+    }
+
+    public void testDeleteTransformRunsOnEveryCandidateAndAllOutputsAreSent() throws Exception {
+        IndexShard shard = mockShard();
+        List<Translog.Operation> ops = List.of(new Translog.Delete("doc", 30, 1));
+        when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
+        DeleteOperationRouter splitRouter = new DeleteOperationRouter(
+            DeleteRoutingStrategy.SHARD_TOPOLOGY,
+            ShardRoutingMode.SPLIT_SHARD,
+            2,
+            new String[] { "r0", "r1", "r2", "r3", "r4", "r5", "r6", "r7" },
+            1
+        );
+        List<DeletedDoc> seen = Collections.synchronizedList(new ArrayList<>());
+        TransformFunction rewriteDeletes = new TransformFunction() {
+            @Override
+            public List<IndexDoc> apply(IndexDoc doc) {
+                return List.of(doc);
+            }
+
+            @Override
+            public List<DeletedDoc> applyDelete(DeletedDoc deletedDoc) {
+                seen.add(deletedDoc);
+                return List.of(new DeletedDoc("t-" + deletedDoc.id(), "fixed", deletedDoc.sourceShardId()));
+            }
+        };
+        List<DocWriteRequest<?>> sent = Collections.synchronizedList(new ArrayList<>());
+
+        TranslogReplayEngine engine = createEngine(capturingBulkHelper(sent), shard, rewriteDeletes, splitRouter, 500, null);
+        ReplayResult result = engine.replayRange(30, 30).get(5, TimeUnit.SECONDS);
+
+        assertEquals(
+            "transform sees each AOSC-routed candidate",
+            List.of("r4", "r5", "r6", "r7"),
+            seen.stream().map(DeletedDoc::routing).collect(Collectors.toList())
+        );
+        assertEquals("identical outputs are all sent, not de-duplicated", 4, sent.size());
+        for (DocWriteRequest<?> request : sent) {
+            assertTrue(request instanceof DeleteRequest);
+            assertEquals("t-doc", request.id());
+            assertEquals("fixed", request.routing());
+        }
+        assertEquals(1, result.operationsReplayed());
+        assertEquals(30, result.lastProcessedSeqNo());
+    }
+
+    public void testEmptyDeleteTransformCountsAsSkipped() throws Exception {
+        IndexShard shard = mockShard();
+        List<Translog.Operation> ops = List.of(new Translog.Delete("doc", 40, 1));
+        when(shard.newChangesSnapshot(any(), anyLong(), anyLong(), anyBoolean(), anyBoolean())).thenReturn(new ListSnapshot(ops));
+        TransformFunction dropDeletes = new TransformFunction() {
+            @Override
+            public List<IndexDoc> apply(IndexDoc doc) {
+                return List.of(doc);
+            }
+
+            @Override
+            public List<DeletedDoc> applyDelete(DeletedDoc deletedDoc) {
+                return List.of();
+            }
+        };
+        List<DocWriteRequest<?>> sent = Collections.synchronizedList(new ArrayList<>());
+
+        ReplayResult result = createEngine(capturingBulkHelper(sent), shard, dropDeletes, legacyDeleteRouter(), 500, null).replayRange(
+            40,
+            40
+        ).get(5, TimeUnit.SECONDS);
+
+        assertTrue(sent.isEmpty());
+        assertEquals(0, result.operationsReplayed());
+        assertEquals(1, result.operationsSkipped());
+        assertEquals(40, result.lastProcessedSeqNo());
+    }
+
     public void testSnapshotClosedOnSuccess() throws Exception {
         AtomicBoolean snapshotClosed = new AtomicBoolean(false);
         IndexShard shard = mockShard();
@@ -610,13 +749,36 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
             shardHandle,
             "target",
             IdentityTransformFunction.INSTANCE,
-            ShardRoutingMode.BULK_API,
-            1,
-            null,
+            legacyDeleteRouter(),
             startCallback,
             progressCallback,
             threadPool
         );
+    }
+
+    private TranslogReplayEngine createEngine(
+        AsyncClientHelper helper,
+        IndexShard shard,
+        TransformFunction transform,
+        DeleteOperationRouter router,
+        int batchSize,
+        TranslogReplayEngine.ProgressCallback progressCallback
+    ) {
+        return new TranslogReplayEngine(
+            AoscLogger.create(TranslogReplayEngine.class),
+            createWriter(helper, batchSize),
+            new ShardHandle(AoscLogger.create(ShardHandle.class), shard, threadPool),
+            "target",
+            transform,
+            router,
+            null,
+            progressCallback,
+            threadPool
+        );
+    }
+
+    private static DeleteOperationRouter legacyDeleteRouter() {
+        return new DeleteOperationRouter(DeleteRoutingStrategy.SHARD_TOPOLOGY, ShardRoutingMode.BULK_API, 1, null, 0);
     }
 
     private ConcurrentBulkWriter createWriter(AsyncClientHelper helper, int batchSize) {
@@ -639,6 +801,19 @@ public class TranslogReplayEngineTests extends OpenSearchTestCase {
     private static AsyncClientHelper mockBulkHelper() {
         var client = MockClientFactory.mockClient();
         doAnswer(invocation -> {
+            ActionListener<BulkResponse> listener = invocation.getArgument(1);
+            listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1));
+            return null;
+        }).when(client).bulk(any(BulkRequest.class), any());
+        return AsyncClientHelper.wrap(client);
+    }
+
+    @SuppressWarnings("unchecked")
+    private static AsyncClientHelper capturingBulkHelper(List<DocWriteRequest<?>> sent) {
+        var client = MockClientFactory.mockClient();
+        doAnswer(invocation -> {
+            BulkRequest request = invocation.getArgument(0);
+            sent.addAll(request.requests());
             ActionListener<BulkResponse> listener = invocation.getArgument(1);
             listener.onResponse(new BulkResponse(new BulkItemResponse[0], 1));
             return null;

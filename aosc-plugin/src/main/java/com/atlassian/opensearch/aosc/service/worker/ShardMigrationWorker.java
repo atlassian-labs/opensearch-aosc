@@ -11,11 +11,11 @@ import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 import com.atlassian.opensearch.aosc.model.ShardProgressDocument;
-import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
 import com.atlassian.opensearch.aosc.service.bulk.BulkWriter;
 import com.atlassian.opensearch.aosc.service.bulk.BulkWriterFactory;
 import com.atlassian.opensearch.aosc.service.worker.TranslogReplayEngine.ReplayResult;
+import com.atlassian.opensearch.aosc.service.worker.routing.DeleteOperationRouter;
 import com.atlassian.opensearch.aosc.statemachine.AwaitableStateMachine;
 import com.atlassian.opensearch.aosc.transform.TransformFunction;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
@@ -105,9 +105,7 @@ public class ShardMigrationWorker implements Closeable {
         String migrationId,
         ShardHandle shardHandle,
         String targetIndex,
-        int sourceShardCount,
-        ShardRoutingMode routingMode,
-        String[] syntheticRoutings,
+        DeleteOperationRouter deleteOperationRouter,
         TransformFunction transform,
         MigrationRequestOptions options,
         AsyncClientHelper clientHelper,
@@ -134,7 +132,7 @@ public class ShardMigrationWorker implements Closeable {
         this.leaseManager = new RetentionLeaseManager(logger, clientHelper, shardHandle.shardId(), migrationId);
 
         Objects.requireNonNull(targetIndex, "targetIndex");
-        Objects.requireNonNull(routingMode, "routingMode");
+        Objects.requireNonNull(deleteOperationRouter, "deleteOperationRouter");
         Objects.requireNonNull(transform, "transform");
 
         // Initialize metrics before engine constructors — lambdas capture these AtomicReference fields
@@ -170,9 +168,7 @@ public class ShardMigrationWorker implements Closeable {
             shardHandle,
             targetIndex,
             transform,
-            routingMode,
-            sourceShardCount,
-            syntheticRoutings,
+            deleteOperationRouter,
             (from, target) -> onTranslogStarted(replayMetrics, from, target),
             (applied, skipped, last, target, round) -> onTranslogProgress(replayMetrics, applied, skipped, last, target, round),
             threadPool
@@ -183,9 +179,7 @@ public class ShardMigrationWorker implements Closeable {
             shardHandle,
             targetIndex,
             transform,
-            routingMode,
-            sourceShardCount,
-            syntheticRoutings,
+            deleteOperationRouter,
             (from, target) -> onTranslogStarted(convergenceMetrics, from, target),
             (applied, skipped, last, target, round) -> onTranslogProgress(convergenceMetrics, applied, skipped, last, target, round),
             threadPool
@@ -196,9 +190,7 @@ public class ShardMigrationWorker implements Closeable {
             shardHandle,
             targetIndex,
             transform,
-            routingMode,
-            sourceShardCount,
-            syntheticRoutings,
+            deleteOperationRouter,
             (from, target) -> onTranslogStarted(catchingUpMetrics, from, target),
             (applied, skipped, last, target, round) -> onTranslogProgress(catchingUpMetrics, applied, skipped, last, target, round),
             threadPool

@@ -10,8 +10,10 @@ package com.atlassian.opensearch.aosc.service.worker;
 import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.AoscTestUtil;
 import com.atlassian.opensearch.aosc.compat.MockClientFactory;
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
+import com.atlassian.opensearch.aosc.service.worker.routing.DeleteOperationRouter;
 import com.atlassian.opensearch.aosc.transform.IdentityTransformFunction;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
 import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
@@ -54,9 +56,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
                 null,
                 new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
                 TARGET_INDEX,
-                1,
-                ShardRoutingMode.BULK_API,
-                null,
+                legacyDeleteRouter(),
                 IdentityTransformFunction.INSTANCE,
                 AoscTestUtil.defaultMigrationOptions(),
                 AsyncClientHelper.wrap(MockClientFactory.mockClient()),
@@ -76,9 +76,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
                 MIGRATION_ID,
                 null,
                 TARGET_INDEX,
-                1,
-                ShardRoutingMode.BULK_API,
-                null,
+                legacyDeleteRouter(),
                 IdentityTransformFunction.INSTANCE,
                 AoscTestUtil.defaultMigrationOptions(),
                 AsyncClientHelper.wrap(MockClientFactory.mockClient()),
@@ -98,9 +96,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
                 MIGRATION_ID,
                 new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
                 null,
-                1,
-                ShardRoutingMode.BULK_API,
-                null,
+                legacyDeleteRouter(),
                 IdentityTransformFunction.INSTANCE,
                 AoscTestUtil.defaultMigrationOptions(),
                 AsyncClientHelper.wrap(MockClientFactory.mockClient()),
@@ -120,9 +116,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
                 MIGRATION_ID,
                 new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
                 TARGET_INDEX,
-                1,
-                ShardRoutingMode.BULK_API,
-                null,
+                legacyDeleteRouter(),
                 IdentityTransformFunction.INSTANCE,
                 null,
                 AsyncClientHelper.wrap(MockClientFactory.mockClient()),
@@ -142,9 +136,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
                 MIGRATION_ID,
                 new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
                 TARGET_INDEX,
-                1,
-                ShardRoutingMode.BULK_API,
-                null,
+                legacyDeleteRouter(),
                 IdentityTransformFunction.INSTANCE,
                 AoscTestUtil.defaultMigrationOptions(),
                 null,
@@ -164,9 +156,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
                 MIGRATION_ID,
                 new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
                 TARGET_INDEX,
-                1,
-                ShardRoutingMode.BULK_API,
-                null,
+                legacyDeleteRouter(),
                 IdentityTransformFunction.INSTANCE,
                 AoscTestUtil.defaultMigrationOptions(),
                 AsyncClientHelper.wrap(MockClientFactory.mockClient()),
@@ -240,9 +230,7 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
             MIGRATION_ID,
             new ShardHandle(AoscLogger.create(ShardHandle.class), mockShard(), threadPool),
             TARGET_INDEX,
-            1,
-            ShardRoutingMode.BULK_API,
-            null,
+            legacyDeleteRouter(),
             IdentityTransformFunction.INSTANCE,
             AoscTestUtil.defaultMigrationOptions(),
             AsyncClientHelper.wrap(MockClientFactory.mockClient()),
@@ -251,6 +239,10 @@ public class ShardMigrationWorkerTests extends OpenSearchTestCase {
             null,
             testClusterSettings()
         );
+    }
+
+    private static DeleteOperationRouter legacyDeleteRouter() {
+        return new DeleteOperationRouter(DeleteRoutingStrategy.SHARD_TOPOLOGY, ShardRoutingMode.BULK_API, 1, null, 0);
     }
 
     private static ClusterSettings testClusterSettings() {

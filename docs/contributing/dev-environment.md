@@ -28,10 +28,11 @@ The plugin ZIP is written under the selected line's `build/distributions/` (Grad
 
 ### Gradle version per OpenSearch version
 
-OpenSearch 2.15–3.6 build on the committed wrapper (Gradle 8.7). **OpenSearch 3.7–3.8 requires Gradle 9.4.1** — its build-tools rejects older Gradle, and the 2.x build-tools breaks on Gradle 9, so no single wrapper serves both lines. Before working on 3.8:
+OpenSearch 2.15–3.6 build on the committed wrapper (Gradle 8.7). **OpenSearch 3.7–3.8 requires Gradle 9.4.1** and **OpenSearch 3.9 requires Gradle 9.7.1** — newer build-tools reject older Gradle, and the 2.x build-tools breaks on Gradle 9, so no single wrapper serves both lines. Before working on 3.7 or later:
 
 ```bash
 ./scripts/set-gradle.sh 3.8.0   # points the wrapper at Gradle 9.4.1 (drives ./gradlew and the IDE)
+./scripts/set-gradle.sh 3.9.0   # points the wrapper at Gradle 9.7.1
 ./scripts/set-gradle.sh --reset # restore the default (8.7) when you switch back
 ```
 
@@ -52,7 +53,7 @@ Supply the OpenSearch version per command, or set a default once in `~/.gradle/g
 ## IntelliJ IDEA
 
 1. Open the repository root.
-2. Set the Gradle JVM to JDK 21 for the `os3` line or JDK 17 for the `os2` line (os2 emits Java 11 bytecode but the build needs JDK 17). Only one line imports per `opensearchVersion`, so switch the Gradle JVM when you switch lines. For 3.7–3.8 work, run `./scripts/set-gradle.sh <version>` first (IntelliJ reads the wrapper's Gradle 9.4.1) and re-sync.
+2. Set the Gradle JVM to JDK 21 for the `os3` line or JDK 17 for the `os2` line (os2 emits Java 11 bytecode but the build needs JDK 17). Only one line imports per `opensearchVersion`, so switch the Gradle JVM when you switch lines. For 3.7 and later, run `./scripts/set-gradle.sh <version>` first (IntelliJ reads the wrapper's Gradle) and re-sync. On a 3.9 setup IntelliJ may show classes from `java-39plus/` twice, because it doesn't apply the overlay's Gradle exclude; Gradle builds are unaffected.
 3. Enable annotation processing for Lombok.
 4. Import the formatter profile from `gradle/formatterConfig.xml` if you want IDE formatting to match Spotless.
 5. Set `opensearchVersion` in `~/.gradle/gradle.properties` (e.g. `3.6.0`) so import resolves the line; override per run configuration with `-PopensearchVersion`.
@@ -84,7 +85,7 @@ If you debug Compose directly, first run `./gradlew dockerCopyPlugin -Popensearc
 
 ## Repository Layout
 
-A single `aosc-plugin/` module contains shared source and version-specific compat directories. Gradle selects `java-2x/` or `java-3x/` based on `-PopensearchVersion`.
+A single `aosc-plugin/` module contains shared source and version-specific compat directories. Gradle selects `java-2x/` or `java-3x/` based on `-PopensearchVersion`, and on OpenSearch 3.9+ also compiles the `java-39plus/` overlay.
 
 ```text
 opensearch-aosc/
@@ -92,6 +93,7 @@ opensearch-aosc/
 |   |-- src/main/java/          # Shared plugin source (both 2.x and 3.x)
 |   |-- src/main/java-2x/       # OpenSearch 2.x-specific source
 |   |-- src/main/java-3x/       # OpenSearch 3.x-specific source
+|   |-- src/main/java-39plus/   # OpenSearch 3.9+ overlay (replaces same-path files)
 |   |-- src/test/java/           # Shared unit tests
 |   |-- src/test/java-2x/        # 2.x-specific tests
 |   |-- src/test/java-3x/        # 3.x-specific tests

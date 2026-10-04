@@ -8,7 +8,12 @@
 package com.atlassian.opensearch.aosc;
 
 import org.opensearch.client.Request;
+import org.opensearch.client.ResponseException;
+import org.opensearch.common.io.Streams;
 
+import java.io.IOException;
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -208,6 +213,53 @@ public class SmokeMigrationCoreIT extends AoscSmokeTestBase {
         @SuppressWarnings("unchecked")
         Map<String, Object> docSource = (Map<String, Object>) doc.get("_source");
         assertEquals("Should have version=2", 2, docSource.get("version"));
+    }
+
+    /** apply_to_deletes with real Painless: deletes have no _source, so the start-time dry run rejects unguarded source logic. */
+    public void testMigrationWithDeleteAwareTransform() throws Exception {
+        assumeTrue("Painless scripting module required", isPainlessAvailable());
+        String source = indexName("xfmd-src");
+        String target = indexName("xfmd-tgt");
+        String alias = indexName("xfmd-alias");
+        createSourceAndTarget(source, target, 1, 1);
+        bulkIndex(source, 200);
+
+        ResponseException rejected = expectThrows(
+            ResponseException.class,
+            () -> startDeleteAwareMigration(source, target, alias, "ctx._source.migrated = true")
+        );
+        assertEquals(400, rejected.getResponse().getStatusLine().getStatusCode());
+        String body = Streams.copyToString(new InputStreamReader(rejected.getResponse().getEntity().getContent(), StandardCharsets.UTF_8));
+        assertTrue(body, body.contains("dry-run failed"));
+
+        startDeleteAwareMigration(
+            source,
+            target,
+            alias,
+            "ctx._id = 't-' + ctx._id; if (ctx.op_type == 'index') { ctx._source.migrated = true }"
+        );
+        waitForCompletion(source, 90);
+        assertDocCountsMatch(source, target);
+
+        Map<String, Object> doc = getDoc(target, "t-0");
+        assertTrue("Doc should exist under its transformed id", (Boolean) doc.get("found"));
+        @SuppressWarnings("unchecked")
+        Map<String, Object> docSource = (Map<String, Object>) doc.get("_source");
+        assertEquals(true, docSource.get("migrated"));
+    }
+
+    private void startDeleteAwareMigration(String source, String target, String alias, String script) throws IOException {
+        Request request = new Request("POST", "/_plugins/_aosc/" + source + "/_start");
+        request.setJsonEntity(
+            "{\"target_index\":\""
+                + target
+                + "\",\"alias\":\""
+                + alias
+                + "\",\"transform_script\":{\"type\":\"inline\",\"source\":\""
+                + script
+                + "\",\"apply_to_deletes\":true}}"
+        );
+        client().performRequest(request);
     }
 
     /**

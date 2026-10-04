@@ -10,6 +10,7 @@ package com.atlassian.opensearch.aosc.service.coordinator;
 import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState;
 import com.atlassian.opensearch.aosc.model.CutoverContext;
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
 import com.atlassian.opensearch.aosc.model.MigrationDocument;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
@@ -81,6 +82,7 @@ class MigrationCoordinator implements Closeable {
     private final MigrationRequestOptions options;
     private final TransformScript transformScript;
     private final ShardRoutingMode routingMode;
+    private final DeleteRoutingStrategy deleteRoutingStrategy;
     private final long startTimeMillis;
     private final Set<Integer> shardOrdinals;
 
@@ -128,6 +130,7 @@ class MigrationCoordinator implements Closeable {
         this.options = entry.options();
         this.transformScript = entry.transformScript();
         this.routingMode = entry.routingMode();
+        this.deleteRoutingStrategy = Objects.requireNonNull(entry.deleteRoutingStrategy(), "deleteRoutingStrategy");
         this.startTimeMillis = entry.startTimeMillis();
         this.shardOrdinals = Set.copyOf(entry.shards().keySet());
         this.logger = parentLogger.with(LC.MIGRATION_ID, migrationId)
@@ -238,6 +241,7 @@ class MigrationCoordinator implements Closeable {
             .phase(sm.currentState())
             .options(options)
             .shardRoutingMode(routingMode)
+            .deleteRoutingStrategy(deleteRoutingStrategy)
             .startTimeMillis(startTimeMillis)
             .lastUpdatedMillis(System.currentTimeMillis())
             .transitionHistory(sm.history())
@@ -580,6 +584,7 @@ class MigrationCoordinator implements Closeable {
             .phase(CoordinatorPhase.INITIALIZING)
             .options(options)
             .shardRoutingMode(routingMode)
+            .deleteRoutingStrategy(deleteRoutingStrategy)
             .startTimeMillis(startTimeMillis)
             .lastUpdatedMillis(startTimeMillis)
             .build();

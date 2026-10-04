@@ -133,6 +133,12 @@ public abstract class AoscIntegTestBase extends OpenSearchIntegTestCase {
      * Mock Painless plugin for integration tests. Registers as "painless" script lang
      * with an UpdateScript context compiler that interprets simple transform patterns.
      */
+    /** Mock script for delete-aware transform ITs. */
+    protected static final String DELETE_AWARE_PREFIX_SCRIPT = "ctx._id = 't-' + ctx._id; ctx._routing = ctx._id";
+
+    /** Mock script that copies {@code ctx.source_shard_id} into the document. */
+    protected static final String SOURCE_SHARD_SCRIPT = "ctx._source.source_shard = ctx.source_shard_id";
+
     public static class MockPainlessPlugin extends MockScriptPlugin implements ScriptPlugin {
         @Override
         public String pluginScriptLang() {
@@ -158,6 +164,12 @@ public abstract class AoscIntegTestBase extends OpenSearchIntegTestCase {
                 return null;
             });
 
+            scripts.put(SOURCE_SHARD_SCRIPT, params -> {
+                Map<String, Object> ctx = (Map<String, Object>) params.get("ctx");
+                ((Map<String, Object>) ctx.get("_source")).put("source_shard", ctx.get("source_shard_id"));
+                return null;
+            });
+
             scripts.put("ctx._source.migrated = true", params -> {
                 Map<String, Object> ctx = (Map<String, Object>) params.get("ctx");
                 Map<String, Object> source = (Map<String, Object>) ctx.get("_source");
@@ -178,6 +190,15 @@ public abstract class AoscIntegTestBase extends OpenSearchIntegTestCase {
                 if (Boolean.TRUE.equals(source.get("poison"))) {
                     throw new RuntimeException("Poison document detected");
                 }
+                return null;
+            });
+
+            // Prefixes the id and routes by it, so index and delete outputs match.
+            scripts.put(DELETE_AWARE_PREFIX_SCRIPT, params -> {
+                Map<String, Object> ctx = (Map<String, Object>) params.get("ctx");
+                String targetId = "t-" + ctx.get("_id");
+                ctx.put("_id", targetId);
+                ctx.put("_routing", targetId);
                 return null;
             });
 

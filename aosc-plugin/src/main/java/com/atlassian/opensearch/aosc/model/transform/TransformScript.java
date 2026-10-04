@@ -45,6 +45,8 @@ import java.util.Map;
  * <pre>{@code
  * { "type": "stored", "id": "my-stored-script", "params": { "t": "v" } }
  * }</pre>
+ *
+ * <p>Either shape accepts {@code "apply_to_deletes": true} to also run the script on deletes.
  */
 @JsonTypeInfo(use = JsonTypeInfo.Id.NAME, property = "type", visible = true)
 @JsonSubTypes({
@@ -70,6 +72,10 @@ public abstract class TransformScript implements JacksonWriteable, JacksonToXCon
     @JsonProperty("script_context")
     protected String scriptContext = SCRIPT_CONTEXT_UPDATE;
 
+    /** When {@code true}, the script also runs on replayed deletes (no {@code _source}) and sets their id and routing. */
+    @JsonProperty("apply_to_deletes")
+    protected boolean applyToDeletes;
+
     protected TransformScript(Map<String, Object> params) {
         this.params = params;
     }
@@ -84,6 +90,12 @@ public abstract class TransformScript implements JacksonWriteable, JacksonToXCon
     @JsonIgnore
     public boolean isUpdateContext() {
         return scriptContext == null || scriptContext.isBlank() || SCRIPT_CONTEXT_UPDATE.equals(scriptContext);
+    }
+
+    /** True iff this script has a body and should also run on replayed deletes. */
+    @JsonIgnore
+    public boolean isDeleteAware() {
+        return applyToDeletes && hasBody();
     }
 
     /** True iff this script has a non-empty body to execute (else: identity pass-through). */

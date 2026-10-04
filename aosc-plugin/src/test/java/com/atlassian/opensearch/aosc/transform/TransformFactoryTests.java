@@ -7,6 +7,7 @@
  */
 package com.atlassian.opensearch.aosc.transform;
 
+import com.atlassian.opensearch.aosc.model.DeletedDoc;
 import com.atlassian.opensearch.aosc.model.transform.InlineTransformScript;
 import com.atlassian.opensearch.aosc.model.transform.StoredTransformScript;
 import com.atlassian.opensearch.aosc.model.transform.TransformScript;
@@ -14,9 +15,18 @@ import com.atlassian.opensearch.aosc.model.transform.TransformScript;
 import org.opensearch.Version;
 import org.opensearch.cluster.metadata.IndexMetadata;
 import org.opensearch.common.settings.Settings;
+import org.opensearch.script.Script;
+import org.opensearch.script.ScriptService;
+import org.opensearch.script.UpdateScript;
 import org.opensearch.test.OpenSearchTestCase;
 
+import java.util.ArrayList;
 import java.util.List;
+
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.eq;
+import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.when;
 
 public class TransformFactoryTests extends OpenSearchTestCase {
 
@@ -130,6 +140,34 @@ public class TransformFactoryTests extends OpenSearchTestCase {
         assertSame(customFn, custom.create(script, dummyMeta("src"), dummyMeta("tgt")));
         // Base behaviour is preserved
         assertTrue(custom.create(null, dummyMeta("src"), dummyMeta("tgt")) instanceof IdentityTransformFunction);
+    }
+
+    // ---- apply_to_deletes ----
+
+    public void testDeletesRunTheScriptOnlyWithApplyToDeletes() {
+        List<Object> seenOps = new ArrayList<>();
+        UpdateScript.Factory script = (params, ctx) -> new UpdateScript(params, ctx) {
+            @Override
+            public void execute() {
+                seenOps.add(ctx.get("op_type"));
+            }
+        };
+        ScriptService scriptService = mock(ScriptService.class);
+        when(scriptService.compile(any(Script.class), eq(UpdateScript.CONTEXT))).thenReturn(script);
+        TransformFactory f = new TransformFactory(scriptService);
+        DeletedDoc delete = new DeletedDoc("1", "r1", 0);
+
+        TransformFunction indexOnly = f.create(new InlineTransformScript("s", null), dummyMeta("src"), dummyMeta("tgt"));
+        assertEquals("dry run covers index ops only", List.of("index"), seenOps);
+        assertEquals(List.of(delete), indexOnly.applyDelete(delete));
+        assertEquals("deletes pass through without running the script", 1, seenOps.size());
+
+        seenOps.clear();
+        TransformScript deleteAware = new InlineTransformScript("s", null).setApplyToDeletes(true);
+        TransformFunction withDeletes = f.create(deleteAware, dummyMeta("src"), dummyMeta("tgt"));
+        assertEquals("dry run also covers deletes", List.of("index", "delete"), seenOps);
+        withDeletes.applyDelete(delete);
+        assertEquals("delete", seenOps.get(2));
     }
 
     public void testUpdateContextWithIdentitySourceReturnsIdentity() {

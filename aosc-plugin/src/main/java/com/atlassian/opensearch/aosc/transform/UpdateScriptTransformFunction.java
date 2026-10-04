@@ -7,6 +7,7 @@
  */
 package com.atlassian.opensearch.aosc.transform;
 
+import com.atlassian.opensearch.aosc.model.DeletedDoc;
 import com.atlassian.opensearch.aosc.model.IndexDoc;
 
 import org.opensearch.script.UpdateScript;
@@ -16,7 +17,7 @@ import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
 
-/** 1:1 in-place transform driven by a Painless {@link UpdateScript}. */
+/** Transform driven by a Painless {@link UpdateScript}; deletes run it without {@code _source}. */
 public final class UpdateScriptTransformFunction implements TransformFunction {
     private final UpdateScript.Factory scriptFactory;
     private final Map<String, Object> params;
@@ -29,12 +30,23 @@ public final class UpdateScriptTransformFunction implements TransformFunction {
     @Override
     public List<IndexDoc> apply(IndexDoc sourceDoc) {
         Map<String, Object> ctx = sourceDoc.toCtx();
+        execute(ctx);
+        return Collections.singletonList(IndexDoc.fromCtx(ctx, sourceDoc.sourceShardId()));
+    }
+
+    @Override
+    public List<DeletedDoc> applyDelete(DeletedDoc deletedDoc) {
+        Map<String, Object> ctx = deletedDoc.toCtx();
+        execute(ctx);
+        return Collections.singletonList(DeletedDoc.fromCtx(ctx, deletedDoc.sourceShardId()));
+    }
+
+    private void execute(Map<String, Object> ctx) {
         try {
             UpdateScript script = scriptFactory.newInstance(params, ctx);
             script.execute();
         } catch (Exception e) {
             throw new RuntimeException("Transform script execution failed: " + e.getMessage(), e);
         }
-        return Collections.singletonList(IndexDoc.fromCtx(ctx));
     }
 }

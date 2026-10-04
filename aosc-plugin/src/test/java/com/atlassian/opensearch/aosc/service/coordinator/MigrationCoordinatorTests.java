@@ -11,6 +11,7 @@ import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.AoscTestUtil;
 import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState;
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
 import com.atlassian.opensearch.aosc.model.MigrationDocument;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
@@ -676,6 +677,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(CoordinatorPhase.ACTIVE)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY)
             .startTimeMillis(System.currentTimeMillis())
             .shards(shards)
             .failure(null)
@@ -748,6 +750,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(CoordinatorPhase.ACTIVE)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY)
             .startTimeMillis(System.currentTimeMillis())
             .shards(shards)
             .failure(null)
@@ -834,6 +837,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(CoordinatorPhase.ACTIVE)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY)
             .startTimeMillis(System.currentTimeMillis())
             .shards(shards)
             .failure(null)
@@ -899,6 +903,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             .options(optionsWithoutTransient)
             .phase(CoordinatorPhase.ACTIVE)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY)
             .startTimeMillis(System.currentTimeMillis())
             .shards(shards)
             .failure(null)
@@ -1011,6 +1016,7 @@ public class MigrationCoordinatorTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(phase)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY)
             .startTimeMillis(System.currentTimeMillis())
             .shards(shards)
             .failure(null)

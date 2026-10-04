@@ -28,6 +28,7 @@ POST /_plugins/_aosc/{index}/_start
 | `id` | string | For stored | Stored script ID. |
 | `params` | object | No | Script parameters. |
 | `script_context` | string | No | Defaults to `update`. Only `update` is supported by the base plugin. |
+| `apply_to_deletes` | boolean | No | Defaults to `false`. When `true`, the script also runs on replayed deletes. See [Transform Documents](../how-to/transform-documents#apply-to-deletes). |
 
 `options` fields:
 
@@ -37,7 +38,7 @@ POST /_plugins/_aosc/{index}/_start
 | `max_convergence_rounds_per_shard` | cluster default, currently `1000` | Replay/convergence round limit. |
 | `doc_count_tolerance` | `0` | Accepted source/target document count difference at cutover. |
 | `validation_query` | unset | Query DSL used to filter source and target counts during validation. |
-| `accept_data_loss_if_custom_routing_is_used` | `false` | Required for `BULK_API` routing topologies. In that mode, deletes are replayed without the original routing key and can miss custom-routed target documents. |
+| `accept_data_loss_if_custom_routing_is_used` | `false` | Required on OpenSearch 3.8 or earlier for `BULK_API` routing topologies. In that mode, deletes are replayed without the original routing key and can miss custom-routed target documents. Not needed when every node runs OpenSearch 3.9 or later at `_start`, because replayed deletes then keep their original routing. |
 | `target_ready_timeout_seconds` | cluster default, currently `14400` | Target readiness timeout. |
 | `remove_source_write_block_on_success` | cluster default, currently `false` | Remove the source write block after successful cutover. |
 | `transient_target_settings` | cluster default | Target settings applied during migration and restored later. |
@@ -156,7 +157,8 @@ Common top-level fields:
 | `target_index` | Target index name. |
 | `alias` | Alias used for cutover. |
 | `phase` | Coordinator phase. |
-| `shard_routing_mode` | Routing strategy selected for shard movement, such as `SAME_SHARD` or `SPLIT_SHARD`. |
+| `shard_routing_mode` | Routing strategy selected for shard movement: `SAME_SHARD`, `SPLIT_SHARD`, `SHRINK_SHARD`, or `BULK_API`. |
+| `delete_routing_strategy` | How replayed deletes are routed, chosen at start. `TRANSLOG_ROUTING` when every node runs OpenSearch 3.9 or later, so deletes keep their recorded routing. `SHARD_TOPOLOGY` otherwise, so deletes are routed by `shard_routing_mode`. |
 | `options` | Resolved migration options. |
 | `transform_script` | Transform script, if set. |
 | `shards` | Map of shard ID to shard progress. |

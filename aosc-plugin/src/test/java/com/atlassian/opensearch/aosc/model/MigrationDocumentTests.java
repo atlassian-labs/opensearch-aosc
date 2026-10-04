@@ -44,6 +44,7 @@ public class MigrationDocumentTests extends OpenSearchTestCase {
                     .setAcceptDataLossIfCustomRoutingIsUsed(false)
             )
             .shardRoutingMode(ShardRoutingMode.SAME_SHARD)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.TRANSLOG_ROUTING)
             .startTimeMillis(1679500000000L)
             .lastUpdatedMillis(1679500060000L)
             .build();
@@ -65,6 +66,7 @@ public class MigrationDocumentTests extends OpenSearchTestCase {
         assertEquals(original.transformScript(), rt.transformScript());
         assertNotNull(rt.options());
         assertEquals(original.shardRoutingMode(), rt.shardRoutingMode());
+        assertEquals(DeleteRoutingStrategy.TRANSLOG_ROUTING, rt.deleteRoutingStrategy());
         assertEquals(original.startTimeMillis(), rt.startTimeMillis());
         assertEquals(original.lastUpdatedMillis(), rt.lastUpdatedMillis());
         assertNull(rt.errorMessage());
@@ -90,6 +92,21 @@ public class MigrationDocumentTests extends OpenSearchTestCase {
         assertNotNull(rt.options());
         assertNull(rt.errorMessage());
         assertNull(rt.shardRoutingMode());
+        assertEquals(DeleteRoutingStrategy.SHARD_TOPOLOGY, rt.deleteRoutingStrategy());
+    }
+
+    public void testLegacyXContentDefaultsDeleteRoutingStrategy() throws IOException {
+        String json = "{\"migration_id\":\"legacy\",\"source_index\":\"src\",\"target_index\":\"tgt\","
+            + "\"phase\":\"INITIALIZING\",\"start_time_millis\":1,\"last_updated_millis\":1}";
+        XContentParser parser = JsonXContent.jsonXContent.createParser(
+            xContentRegistry(),
+            DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
+            json
+        );
+
+        MigrationDocument document = MigrationDocument.fromXContent(parser);
+
+        assertEquals(DeleteRoutingStrategy.SHARD_TOPOLOGY, document.deleteRoutingStrategy());
     }
 
     // ---- XContent round-trip ----
@@ -112,6 +129,7 @@ public class MigrationDocumentTests extends OpenSearchTestCase {
         assertEquals(original.targetIndex(), rt.targetIndex());
         assertEquals(original.phase(), rt.phase());
         assertEquals(original.shardRoutingMode(), rt.shardRoutingMode());
+        assertEquals(DeleteRoutingStrategy.TRANSLOG_ROUTING, rt.deleteRoutingStrategy());
     }
 
     // ---- withPhase ----
@@ -122,6 +140,7 @@ public class MigrationDocumentTests extends OpenSearchTestCase {
         assertEquals(CoordinatorPhase.CUTTING_OVER, updated.phase());
         assertEquals(original.migrationId(), updated.migrationId());
         assertEquals(original.sourceIndex(), updated.sourceIndex());
+        assertEquals(DeleteRoutingStrategy.TRANSLOG_ROUTING, updated.deleteRoutingStrategy());
         assertTrue(updated.lastUpdatedMillis() >= original.lastUpdatedMillis());
     }
 

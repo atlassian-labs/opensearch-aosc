@@ -7,17 +7,20 @@
  */
 package com.atlassian.opensearch.aosc.service.worker;
 
+import com.atlassian.opensearch.aosc.compat.TranslogDeleteOp;
+import com.atlassian.opensearch.aosc.model.DeletedDoc;
 import com.atlassian.opensearch.aosc.model.IndexDoc;
-import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.service.bulk.BulkWriter;
 import com.atlassian.opensearch.aosc.service.bulk.ThreadSafeDocSource;
 import com.atlassian.opensearch.aosc.service.bulk.WriteOp;
+import com.atlassian.opensearch.aosc.service.worker.routing.DeleteOperationRouter;
 import com.atlassian.opensearch.aosc.transform.TransformFunction;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
 import com.atlassian.opensearch.aosc.utils.AsyncUtils;
 import com.atlassian.opensearch.aosc.utils.LC;
 import com.atlassian.opensearch.aosc.utils.ShardHandle;
 
+import org.opensearch.action.DocWriteRequest;
 import org.opensearch.action.delete.DeleteRequest;
 import org.opensearch.action.index.IndexRequest;
 import org.opensearch.common.xcontent.XContentHelper;
@@ -26,6 +29,7 @@ import org.opensearch.threadpool.ThreadPool;
 
 import java.io.IOException;
 import java.util.ArrayDeque;
+import java.util.ArrayList;
 import java.util.Iterator;
 import java.util.List;
 import java.util.Map;
@@ -67,7 +71,7 @@ public class TranslogReplayEngine {
      * Fired after each bulk batch is flushed, and once on terminal (success/cancel/error).
      *
      * @param operationsReplayed cumulative INDEX+DELETE ops replayed so far
-     * @param operationsSkipped  cumulative NO_OP ops skipped so far
+     * @param operationsSkipped  cumulative ops skipped so far (NO_OPs, and ops the transform emitted nothing for)
      * @param lastProcessedSeqNo the sequence number of the last operation processed
      * @param targetSeqNo        the target sequence number for the current round
      * @param round              current round (1 for single-range replay, 1..N for convergence)
@@ -86,14 +90,11 @@ public class TranslogReplayEngine {
     private final ShardHandle shardHandle;
     private final String targetIndex;
     private final TransformFunction transform;
-    private final ShardRoutingMode routingMode;
-    private final int sourceShardCount;
-    private final String[] syntheticRoutings;
+    private final DeleteOperationRouter deleteOperationRouter;
     private final StartCallback startCallback;
     private final ProgressCallback progressCallback;
     private final ThreadPool threadPool;
     private final AoscLogger logger;
-    private final int shardId;
 
     private final AtomicBoolean cancelled = new AtomicBoolean(false);
     private final AtomicBoolean started = new AtomicBoolean(false);
@@ -110,9 +111,7 @@ public class TranslogReplayEngine {
         ShardHandle shardHandle,
         String targetIndex,
         TransformFunction transform,
-        ShardRoutingMode routingMode,
-        int sourceShardCount,
-        String[] syntheticRoutings,
+        DeleteOperationRouter deleteOperationRouter,
         StartCallback startCallback,
         ProgressCallback progressCallback,
         ThreadPool threadPool
@@ -122,13 +121,10 @@ public class TranslogReplayEngine {
         this.shardHandle = Objects.requireNonNull(shardHandle, "shardHandle");
         this.targetIndex = Objects.requireNonNull(targetIndex, "targetIndex");
         this.transform = Objects.requireNonNull(transform, "transform");
-        this.routingMode = Objects.requireNonNull(routingMode, "routingMode");
-        this.sourceShardCount = sourceShardCount;
-        this.syntheticRoutings = syntheticRoutings;
+        this.deleteOperationRouter = Objects.requireNonNull(deleteOperationRouter, "deleteOperationRouter");
         this.startCallback = startCallback;
         this.progressCallback = progressCallback;
         this.threadPool = Objects.requireNonNull(threadPool, "threadPool");
-        this.shardId = shardHandle.shardNum();
         finishedFuture.whenComplete((r, e) -> {
             if (progressCallback != null) {
                 progressCallback.onProgress(
@@ -272,7 +268,8 @@ public class TranslogReplayEngine {
                 kv(LC.FROM_SEQ_NO, fromSeqNo),
                 kv(LC.TARGET_SEQ_NO, targetSeqNo),
                 kv(LC.RANGE, Math.max(0, targetSeqNo - fromSeqNo + 1)),
-                kv(LC.ROUTING_MODE, routingMode.toString())
+                kv(LC.ROUTING_MODE, deleteOperationRouter.routingMode().toString()),
+                kv(LC.DELETE_ROUTING_STRATEGY, deleteOperationRouter.strategy().toString())
             );
 
             // Empty range — nothing to replay
@@ -372,7 +369,10 @@ public class TranslogReplayEngine {
         long operationsSkipped;
     }
 
-    /** Per-batch metrics for replay — tracks replayed ops, skipped ops, and last seqNo. */
+    /**
+     * Per-write replay metrics. For each source op, the first write counts it and only the last carries
+     * its seqNo ({@code -1} on the others), so progress never passes a partly written op.
+     */
     @lombok.Value
     @lombok.experimental.Accessors(fluent = true)
     public static class ReplayBatchMetrics {
@@ -404,7 +404,8 @@ public class TranslogReplayEngine {
      * Iterator that reads translog operations one at a time, transforms them,
      * and yields {@link WriteOp} objects. NO_OP operations are yielded as
      * {@link WriteOp#skipped(long)} so the supplier can count them in batch metadata.
-     * Handles DELETE fan-out for SPLIT_SHARD routing mode via a pending buffer.
+     * Fan-out writes go through a pending buffer. Every {@code build*} call queues at least one op
+     * (a non-writing one when the transform emits nothing), so {@code hasNext()} never lies.
      */
     private class ReplayDocIterator implements Iterator<WriteOp<ReplayBatchMetrics>> {
 
@@ -429,7 +430,7 @@ public class TranslogReplayEngine {
                             buildIndexWriteOp((Translog.Index) op);
                             return true;
                         case DELETE:
-                            buildDeleteWriteOps((Translog.Delete) op);
+                            buildDeleteWriteOps(new TranslogDeleteOp((Translog.Delete) op));
                             return true;
                         case NO_OP:
                             buildSkippedWriteOp(op);
@@ -455,56 +456,41 @@ public class TranslogReplayEngine {
         private void buildIndexWriteOp(Translog.Index indexOp) {
             Map<String, Object> sourceMap = XContentHelper.convertToMap(indexOp.source(), true).v2();
 
-            List<IndexDoc> outputs = transform.apply(new IndexDoc(indexOp.id(), indexOp.routing(), sourceMap));
+            List<IndexDoc> outputs = transform.apply(new IndexDoc(indexOp.id(), indexOp.routing(), sourceMap, shardHandle.shardNum()));
 
-            int emitted = 0;
+            List<DocWriteRequest<?>> requests = new ArrayList<>(outputs.size());
             for (IndexDoc out : outputs) {
-                int opsReplayed = (emitted++ == 0) ? 1 : 0;
                 IndexRequest req = new IndexRequest(targetIndex).id(out.id()).source(out.source());
                 if (out.routing() != null) req.routing(out.routing());
-                queue.add(WriteOp.of(req, new ReplayBatchMetrics(opsReplayed, 0, indexOp.seqNo())));
+                requests.add(req);
             }
+            enqueueForSourceOp(requests, indexOp.seqNo());
         }
 
         private void buildSkippedWriteOp(Translog.Operation op) {
             queue.add(WriteOp.skipped(new ReplayBatchMetrics(0, 1, op.seqNo())));
         }
 
-        private void buildDeleteWriteOps(Translog.Delete deleteOp) {
-            switch (routingMode) {
-                case SAME_SHARD:
-                    String sameShardRouting = syntheticRoutings != null ? syntheticRoutings[shardId] : null;
-                    queue.add(
-                        WriteOp.of(
-                            new DeleteRequest(targetIndex, deleteOp.id()).routing(sameShardRouting),
-                            new ReplayBatchMetrics(1, 0, deleteOp.seqNo())
-                        )
-                    );
-                    break;
-                case SPLIT_SHARD:
-                    if (syntheticRoutings != null && sourceShardCount > 0) {
-                        int k = syntheticRoutings.length / sourceShardCount;
-                        for (int i = 0; i < k; i++) {
-                            int candidateShard = shardId * k + i;
-                            // Only the first fan-out request counts as 1 op replayed
-                            int opsReplayed = (i == 0) ? 1 : 0;
-                            queue.add(
-                                WriteOp.of(
-                                    new DeleteRequest(targetIndex, deleteOp.id()).routing(syntheticRoutings[candidateShard]),
-                                    new ReplayBatchMetrics(opsReplayed, 0, deleteOp.seqNo())
-                                )
-                            );
-                        }
-                    } else {
-                        queue.add(
-                            WriteOp.of(new DeleteRequest(targetIndex, deleteOp.id()), new ReplayBatchMetrics(1, 0, deleteOp.seqNo()))
-                        );
-                    }
-                    break;
-                case BULK_API:
-                default:
-                    queue.add(WriteOp.of(new DeleteRequest(targetIndex, deleteOp.id()), new ReplayBatchMetrics(1, 0, deleteOp.seqNo())));
-                    break;
+        /** Routes the delete, transforms each routed delete, and sends every output as is. */
+        private void buildDeleteWriteOps(TranslogDeleteOp delete) {
+            List<DocWriteRequest<?>> requests = new ArrayList<>();
+            for (DeletedDoc candidate : deleteOperationRouter.route(delete)) {
+                for (DeletedDoc out : transform.applyDelete(candidate)) {
+                    requests.add(new DeleteRequest(targetIndex, out.id()).routing(out.routing()));
+                }
+            }
+            enqueueForSourceOp(requests, delete.seqNo());
+        }
+
+        /** Queues all writes for one source op with per-source-op accounting (see {@link ReplayBatchMetrics}). */
+        private void enqueueForSourceOp(List<DocWriteRequest<?>> requests, long seqNo) {
+            if (requests.isEmpty()) {
+                queue.add(WriteOp.skipped(new ReplayBatchMetrics(0, 1, seqNo)));
+                return;
+            }
+            int last = requests.size() - 1;
+            for (int i = 0; i <= last; i++) {
+                queue.add(WriteOp.of(requests.get(i), new ReplayBatchMetrics(i == 0 ? 1 : 0, 0, i == last ? seqNo : -1)));
             }
         }
     }

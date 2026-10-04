@@ -17,7 +17,11 @@ AOSC `develop` builds BOTH OpenSearch lines from a single unified module
 `aosc-plugin` with version-specific source directories. Shared code lives in
 `src/*/java/`; files that differ between OpenSearch 2.x and 3.x live in
 `src/*/java-2x/` and `src/*/java-3x/`. Gradle selects the matching compat
-directory based on `-PopensearchVersion`.
+directory based on `-PopensearchVersion`. On OpenSearch 3.9+ builds, files in
+`src/*/java-39plus/` replace the file at the same relative path in the base
+directories, and overlay-only files are added. The overlay is not a drift pair:
+keep the default implementation in the normal location, and put tests that use
+3.9-only APIs in `src/test/java-39plus/`.
 
 3.x packages: `org.opensearch.transport.client.*`,
 `action.support.clustermanager.*`, Java 21. 2.x packages:
@@ -38,6 +42,7 @@ putting version-specific code in shared files):
 - `OsTestCompat` — `ShardStats` constructor difference
 - `MockClientFactory` — mock `Client`/`AdminClient` creation for tests
 - `HttpCompat` — Apache HttpClient 4 vs 5 in smoke/benchmark tests
+- `TranslogDeleteOp` — wraps `Translog.Delete`, whose `routing()` exists only on 3.9+; the default in `java/` throws, the overlay in `java-39plus/` returns it
 
 Common 3.x imports:
 
@@ -130,9 +135,9 @@ npm run docs:build
 ```
 
 Gradle version: OpenSearch 2.15–3.6 build on the committed wrapper (Gradle 8.7). OpenSearch
-**3.7–3.8 requires Gradle 9.4.1** (its build-tools rejects older Gradle, and 2.x build-tools breaks
-on Gradle 9 — so no single wrapper serves both). Before building 3.8, run
-`./scripts/set-gradle.sh 3.8.0` (it points the wrapper at 9.4.1); `./scripts/set-gradle.sh --reset`
+**3.7–3.8 requires Gradle 9.4.1** and **3.9 requires Gradle 9.7.1** (newer build-tools reject older
+Gradle, and 2.x build-tools breaks on Gradle 9 — so no single wrapper serves both). Before building
+3.7 or later, run `./scripts/set-gradle.sh <version>`; `./scripts/set-gradle.sh --reset`
 restores 8.7. CI does this per job automatically. Do not commit the flipped wrapper.
 
 Use `--no-daemon` for longer integration runs when debugging stale Gradle

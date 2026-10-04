@@ -323,7 +323,7 @@ public class BackfillEngine {
             String routing = fieldsVisitor.routing();
             Map<String, Object> sourceMap = XContentHelper.convertToMap(sourceBytes, true).v2();
 
-            List<IndexDoc> outputs = transform.apply(new IndexDoc(docId, routing, sourceMap));
+            List<IndexDoc> outputs = transform.apply(new IndexDoc(docId, routing, sourceMap, shardHandle.shardNum()));
 
             int emitted = 0;
             for (IndexDoc out : outputs) {

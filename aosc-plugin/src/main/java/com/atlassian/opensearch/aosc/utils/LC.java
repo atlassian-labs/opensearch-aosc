@@ -68,5 +68,6 @@ public final class LC {
     public static final String LAST_PROCESSED_SEQ_NO = "lastProcessedSeqNo";
     public static final String RANGE = "range";
     public static final String ROUTING_MODE = "routingMode";
+    public static final String DELETE_ROUTING_STRATEGY = "deleteRoutingStrategy";
 
 }

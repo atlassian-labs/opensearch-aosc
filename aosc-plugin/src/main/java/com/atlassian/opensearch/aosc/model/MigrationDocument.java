@@ -74,6 +74,8 @@ public class MigrationDocument implements JacksonWriteable, JacksonToXContentObj
     private final MigrationRequestOptions options = new MigrationRequestOptions();
     @JsonProperty("shard_routing_mode")
     private final ShardRoutingMode shardRoutingMode;
+    @JsonProperty("delete_routing_strategy")
+    private final DeleteRoutingStrategy deleteRoutingStrategy;
     @JsonProperty("synthetic_routings")
     private final String[] syntheticRoutings;
     @JsonProperty("start_time_millis")
@@ -106,6 +108,7 @@ public class MigrationDocument implements JacksonWriteable, JacksonToXContentObj
         this.transformScript = obj.transformScript;
         this.options = obj.options;
         this.shardRoutingMode = obj.shardRoutingMode;
+        this.deleteRoutingStrategy = obj.deleteRoutingStrategy != null ? obj.deleteRoutingStrategy : DeleteRoutingStrategy.SHARD_TOPOLOGY;
         this.syntheticRoutings = obj.syntheticRoutings;
         this.startTimeMillis = obj.startTimeMillis;
         this.lastUpdatedMillis = obj.lastUpdatedMillis;
@@ -118,7 +121,10 @@ public class MigrationDocument implements JacksonWriteable, JacksonToXContentObj
 
     /** Deserialize from XContent parser. */
     public static MigrationDocument fromXContent(org.opensearch.core.xcontent.XContentParser parser) throws IOException {
-        return JacksonHelper.fromXContent(parser, MigrationDocument.class);
+        MigrationDocument document = JacksonHelper.fromXContent(parser, MigrationDocument.class);
+        return document.deleteRoutingStrategy != null
+            ? document
+            : document.toBuilder().deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY).build();
     }
 
     public MigrationDocument withPhase(CoordinatorPhase newPhase) {

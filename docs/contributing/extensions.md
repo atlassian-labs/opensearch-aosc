@@ -22,7 +22,7 @@ Extension plugins may override transform creation to support custom script conte
 
 ## `TransformFunction`
 
-`TransformFunction` receives an `IndexDoc` and returns the document or documents to write to the target index.
+`TransformFunction` receives an `IndexDoc` and returns the document or documents to write to the target index. `applyDelete` receives each routed delete as a `DeletedDoc` and returns the deletes to send; the default returns it unchanged. `IndexDoc.toCtx()` and `DeletedDoc.toCtx()` include `op_type` and `source_shard_id`.
 
 Implementations must preserve AOSC correctness requirements:
 

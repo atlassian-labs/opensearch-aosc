@@ -7,9 +7,12 @@
  */
 package com.atlassian.opensearch.aosc;
 
-import org.opensearch.client.Request;
+import org.opensearch.Version;
 import org.opensearch.client.ResponseException;
+import org.opensearch.common.io.Streams;
 
+import java.io.InputStreamReader;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -128,25 +131,25 @@ public class SmokeRoutingIT extends AoscSmokeTestBase {
         assertDocCountsMatch(source, target);
     }
 
-    /**
-     * Non-multiple shard counts (2→3) WITHOUT accept_data_loss flag should be rejected.
-     */
-    public void testNonMultipleRejectedWithoutFlag() throws Exception {
+    /** Non-multiple shard counts require consent only before translog delete routing is available. */
+    public void testNonMultipleWithoutFlag() throws Exception {
         String source = indexName("rej-src");
         String target = indexName("rej-tgt");
         createSourceAndTarget(source, target, 2, 3);
         bulkIndex(source, 100);
 
-        try {
-            // Start without accept_data_loss flag
-            Request request = new Request("POST", "/_plugins/_aosc/" + source + "/_start");
-            request.setJsonEntity("{\"target\":{\"index\":\"" + target + "\"},\"alias\":\"" + indexName("rej-alias") + "\"}");
-            client().performRequest(request);
-            fail("Non-multiple shard migration without accept_data_loss should be rejected");
-        } catch (ResponseException e) {
-            int statusCode = e.getResponse().getStatusLine().getStatusCode();
-            assertTrue("Should return 4xx or 5xx, got: " + statusCode, statusCode >= 400);
+        if (Version.CURRENT.onOrAfter(Version.fromString("3.9.0"))) {
+            startMigration(source, target, indexName("rej-alias"));
+            waitForCompletion(source, 90);
+            assertDocCountsMatch(source, target);
+            return;
         }
+
+        ResponseException error = expectThrows(ResponseException.class, () -> startMigration(source, target, indexName("rej-alias")));
+        int statusCode = error.getResponse().getStatusLine().getStatusCode();
+        assertTrue("Should return 4xx, got: " + statusCode, statusCode >= 400 && statusCode < 500);
+        String body = Streams.copyToString(new InputStreamReader(error.getResponse().getEntity().getContent(), StandardCharsets.UTF_8));
+        assertTrue(body, body.contains("accept_data_loss_if_custom_routing_is_used=true"));
     }
 
     /**

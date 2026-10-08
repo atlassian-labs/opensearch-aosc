@@ -9,12 +9,16 @@ package com.atlassian.opensearch.aosc;
 
 import org.opensearch.action.get.GetRequest;
 import org.opensearch.action.get.GetResponse;
+import org.opensearch.cluster.metadata.IndexMetadata;
+import org.opensearch.cluster.routing.OperationRouting;
 import org.opensearch.common.xcontent.XContentType;
 import org.opensearch.core.common.bytes.BytesArray;
 import org.opensearch.test.OpenSearchIntegTestCase.ClusterScope;
 import org.opensearch.test.OpenSearchIntegTestCase.Scope;
 
+import java.util.HashSet;
 import java.util.Map;
+import java.util.Set;
 
 /**
  * Integration tests for document transformation during migration — inline scripts,
@@ -42,6 +46,26 @@ public class TransformScriptIT extends AoscIntegTestBase {
             assertEquals("Inline transform should set migrated=true", true, resp.getSourceAsMap().get("migrated"));
             assertEquals("Original field should be preserved", i, resp.getSourceAsMap().get("value"));
         }
+    }
+
+    public void testScriptSeesEachDocumentsSourceShard() throws Exception {
+        String source = indexName("itx-shard-src");
+        String target = indexName("itx-shard-tgt");
+        createSourceAndTarget(source, target, 2, 2);
+        indexDocs(source, 20);
+
+        startMigration(source, target, "itx-shard-alias", SOURCE_SHARD_SCRIPT);
+        assertMigrationCompleted(source, 60);
+
+        IndexMetadata sourceMeta = clusterService().state().metadata().index(source);
+        Set<Integer> shards = new HashSet<>();
+        for (int i = 0; i < 20; i++) {
+            String id = String.valueOf(i);
+            int expected = OperationRouting.generateShardId(sourceMeta, id, null);
+            assertEquals("doc " + id, expected, client().get(new GetRequest(target, id)).actionGet().getSourceAsMap().get("source_shard"));
+            shards.add(expected);
+        }
+        assertEquals("docs come from both source shards", 2, shards.size());
     }
 
     public void testStoredScriptTransformWithoutParams() throws Exception {

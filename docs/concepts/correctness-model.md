@@ -20,15 +20,16 @@ Retention leases are used to keep required operation history available while wor
 
 ## Routing
 
-Backfill and replayed index operations preserve `_routing` when it is present. Delete operations require topology-specific handling because OpenSearch operation history records the deleted `_id` but not the routing key.
+Backfill and replayed index operations preserve `_routing` when it is present. On OpenSearch 3.9 and later, replayed deletes keep their recorded routing. Before 3.9, delete operations require topology-specific handling because operation history records the deleted `_id` but not the routing key.
 
-AOSC supports three routing modes:
+Before OpenSearch 3.9, AOSC routes deletes by one of four routing modes:
 
 | Mode | Topology | Correctness boundary |
 |------|----------|----------------------|
 | `SAME_SHARD` | Source and target have the same shard count. | Safe for custom routing because each source shard maps to the corresponding target shard. |
 | `SPLIT_SHARD` | Target shard count is a power-of-2 multiple of the source shard count. | Safe for custom routing because deletes fan out to the target shard group that can contain documents from the source shard. |
-| `BULK_API` | Shrink, non-multiple change, or non-power-of-2 expansion. | Deletes are routed by `_id`; custom-routed deletes can leave stale target documents. |
+| `SHRINK_SHARD` | Source shard count is a power-of-2 multiple of the target shard count. | Safe for custom routing because each source shard maps to exactly one target shard. |
+| `BULK_API` | Non-multiple change, or non-power-of-2 expansion or shrink. | Deletes are routed by `_id`; custom-routed deletes can leave stale target documents. |
 
 See [Routing and Replay](./routing-and-replay) for the detailed model and the data-loss consent gate.
 

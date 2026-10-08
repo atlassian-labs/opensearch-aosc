@@ -11,6 +11,7 @@ import com.atlassian.opensearch.aosc.AoscSettings;
 import com.atlassian.opensearch.aosc.AoscTestUtil;
 import com.atlassian.opensearch.aosc.compat.MockClientFactory;
 import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState;
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
 import com.atlassian.opensearch.aosc.model.MigrationMetadata;
 import com.atlassian.opensearch.aosc.model.ShardProgressDocument;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
@@ -240,6 +241,7 @@ public class MediumThreadSafetyTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(phase)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.SHARD_TOPOLOGY)
             .startTimeMillis(System.currentTimeMillis())
             .shards(shards)
             .failure(null)

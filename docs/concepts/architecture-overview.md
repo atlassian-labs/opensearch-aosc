@@ -30,7 +30,7 @@ This view expands the control-plane mechanics: how the coordinator writes migrat
 
 Backfill reads source documents, applies the configured transform, and indexes target documents with the same ID and routing when routing is present.
 
-Replay reads source operation history through OpenSearch shard APIs. Index/create operations are transformed and indexed into the target. Delete operations are applied to the target according to the detected routing mode.
+Replay reads source operation history through OpenSearch shard APIs. Index/create operations are transformed and indexed into the target. Delete operations are routed with the routing recorded in the delete on OpenSearch 3.9 and later, or by the detected routing mode on earlier versions. See [Transform Boundary](#transform-boundary) for where the transform runs.
 
 ## Migration Lifecycle
 
@@ -54,7 +54,7 @@ Before accepting a migration, AOSC validates that:
 - Source and target index names are different.
 - The alias is valid for cutover.
 - The plugin is installed consistently on all nodes.
-- The target routing mode can be handled, or explicit consent has been provided for risky routing cases.
+- The target routing mode can be handled, or, on OpenSearch 3.8 or earlier, explicit consent has been provided for risky routing cases.
 - The transform and validation query are valid enough to start.
 
 AOSC does not create the target index.
@@ -69,7 +69,18 @@ Cancellation and failure cleanup release leases and remove the source write bloc
 
 The base plugin supports the OpenSearch `update` script context. Scripts mutate `ctx._source`; omit `transform_script` for identity behavior.
 
-Built-in transforms are one-source-document to one-target-document. Fan-out, joins, external lookups, and cross-cluster movement are outside the base plugin contract.
+AOSC routes each operation first, then runs the transform on each routed operation and writes its output as is:
+
+```text
+source operation
+  -> AOSC routing:   index:  _id and _routing as written
+                     delete: recorded routing (OpenSearch 3.9+), or one routed delete
+                             per target shard the source shard maps to (earlier)
+  -> transform:      runs on each routed operation; deletes only with apply_to_deletes
+  -> target writes:  the transform's _id and _routing, not re-routed by AOSC
+```
+
+Built-in transforms emit one target operation per routed operation. Fan-out, joins, external lookups, and cross-cluster movement are outside the base plugin contract.
 
 ## Backpressure Boundary
 

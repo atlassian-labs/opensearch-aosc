@@ -7,6 +7,8 @@
  */
 package com.atlassian.opensearch.aosc.transform;
 
+import com.atlassian.opensearch.aosc.model.DeletedDoc;
+import com.atlassian.opensearch.aosc.model.IndexDoc;
 import com.atlassian.opensearch.aosc.model.transform.TransformScript;
 
 import org.opensearch.ResourceNotFoundException;
@@ -45,7 +47,9 @@ public class TransformFactory {
         }
         if (transformScript.isUpdateContext()) {
             UpdateScript.Factory factory = compileAndDryRun(transformScript);
-            return new UpdateScriptTransformFunction(factory, transformScript.getEffectiveParams());
+            TransformFunction function = new UpdateScriptTransformFunction(factory, transformScript.getEffectiveParams());
+            // Without apply_to_deletes, deletes pass through unchanged via the default applyDelete.
+            return transformScript.isDeleteAware() ? function : function::apply;
         }
         throw new IllegalArgumentException(
             "Unknown transform script_context ["
@@ -74,16 +78,19 @@ public class TransformFactory {
                 e
             );
         }
-        dryRun(factory, params);
+        dryRun(factory, params, transformScript.isDeleteAware());
         return factory;
     }
 
-    /** Dry-run the script against an empty ctx to surface unbound-param errors at start time. */
-    private static void dryRun(UpdateScript.Factory factory, Map<String, Object> params) {
-        Map<String, Object> ctx = new HashMap<>();
-        ctx.put("_source", new HashMap<String, Object>());
+    private static final String DRY_RUN_ID = "aosc-dry-run";
+
+    /** Dry-run on a sample doc (and, with {@code apply_to_deletes}, a sample delete) to fail bad scripts at start. */
+    private static void dryRun(UpdateScript.Factory factory, Map<String, Object> params, boolean deleteAware) {
         try {
-            factory.newInstance(params, ctx).execute();
+            factory.newInstance(params, new IndexDoc(DRY_RUN_ID, null, new HashMap<>(), 0).toCtx()).execute();
+            if (deleteAware) {
+                factory.newInstance(params, new DeletedDoc(DRY_RUN_ID, null, 0).toCtx()).execute();
+            }
         } catch (Exception e) {
             throw new IllegalArgumentException(
                 "Transform script dry-run failed (check that transform_script.params includes all params referenced by the script): "

@@ -10,6 +10,7 @@ package com.atlassian.opensearch.aosc.action.start;
 import com.atlassian.opensearch.aosc.action.start.validation.DataLossConsentValidator;
 import com.atlassian.opensearch.aosc.action.start.validation.IndexPreconditionsValidator;
 import com.atlassian.opensearch.aosc.action.start.validation.PluginConsistencyValidator;
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 
 import org.opensearch.Build;
@@ -116,11 +117,15 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
         assertTrue(ex.getMessage().contains("3 → 5"));
     }
 
-    public void testShrinkWithoutFlagIsRejected() {
-        // 4→2: shrinking — BULK_API, no flag → rejected with shrink-specific message
-        IllegalArgumentException ex = DataLossConsentValidator.checkDataLossConsent(buildMeta("src", 4), buildMeta("tgt", 2), null);
-        assertNotNull("Expected rejection for 4→2 shrink without flag", ex);
-        assertTrue("Expected shrink-specific message", ex.getMessage().contains("Shrinking from 4 to 2"));
+    public void testNonPowerOfTwoShrinkWithoutFlagIsRejected() {
+        // 6→2: factor 3 is BULK_API, no flag → rejected with shrink-specific message
+        IllegalArgumentException ex = DataLossConsentValidator.checkDataLossConsent(buildMeta("src", 6), buildMeta("tgt", 2), null);
+        assertNotNull("Expected rejection for 6→2 shrink without flag", ex);
+        assertTrue("Expected shrink-specific message", ex.getMessage().contains("Shrinking from 6 to 2"));
+    }
+
+    public void testPowerOfTwoShrinkNeedsNoFlag() {
+        assertNull(DataLossConsentValidator.checkDataLossConsent(buildMeta("src", 4), buildMeta("tgt", 2), null));
     }
 
     // ---- Allowed cases ----
@@ -171,7 +176,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
     public void testPreconditionsPassForHealthyState() {
         IndexMetadata src = buildMeta("src", 2);
         IndexMetadata tgt = buildMeta("tgt", 2);
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            healthyState(src, tgt),
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertTrue("Expected no errors for healthy state, got: " + errors, errors.isEmpty());
     }
 
@@ -186,7 +197,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
             .putAlias(AliasMetadata.builder("my-alias").build())
             .build();
         IndexMetadata tgt = buildMeta("tgt", 2);
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            healthyState(src, tgt),
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertTrue("Alias on source should be allowed, got: " + errors, errors.isEmpty());
     }
 
@@ -201,7 +218,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
             )
             .putAlias(AliasMetadata.builder("my-alias").build())
             .build();
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            healthyState(src, tgt),
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertEquals(1, errors.size());
         assertTrue(errors.get(0).contains("already points to target index"));
     }
@@ -213,7 +236,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
             .metadata(Metadata.builder().put(src, false).put(tgt, false).build())
             .routingTable(RoutingTable.builder().add(buildUnassignedRouting(src)).add(buildActiveRouting(tgt)).build())
             .build();
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(state, src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            state,
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertEquals(1, errors.size());
         assertTrue(errors.get(0).contains("source index [src]"));
         assertTrue(errors.get(0).contains("unready primaries"));
@@ -226,7 +255,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
             .metadata(Metadata.builder().put(src, false).put(tgt, false).build())
             .routingTable(RoutingTable.builder().add(buildActiveRouting(src)).add(buildUnassignedRouting(tgt)).build())
             .build();
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(state, src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            state,
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertEquals(1, errors.size());
         assertTrue(errors.get(0).contains("target index [tgt]"));
         assertTrue(errors.get(0).contains("0/3 active"));
@@ -243,7 +278,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
         // a normal 2-shard index passes.
         IndexMetadata src = buildMeta("src", 2);
         IndexMetadata tgt = buildMeta("tgt", 2);
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            healthyState(src, tgt),
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertTrue("Normal shard counts should pass synthetic routing check", errors.isEmpty());
     }
 
@@ -265,7 +306,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
                 RoutingTable.builder().add(buildActiveRouting(src)).add(buildActiveRouting(tgt)).add(buildActiveRouting(other)).build()
             )
             .build();
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(state, src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            state,
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertEquals(1, errors.size());
         assertTrue(errors.get(0).contains("alias [my-alias] already exists on unrelated"));
     }
@@ -284,7 +331,13 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
                     .build()
             )
             .build();
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(state, src, tgt, "my-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            state,
+            src,
+            tgt,
+            "my-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertEquals(1, errors.size());
         assertTrue(errors.get(0).contains("conflicts with an existing concrete index"));
     }
@@ -311,14 +364,28 @@ public class TransportStartMigrationActionTests extends OpenSearchTestCase {
                     .build()
             )
             .build();
-        List<String> errors = IndexPreconditionsValidator.validatePreconditions(state, src, tgt, "conflict-alias");
+        List<String> errors = IndexPreconditionsValidator.validatePreconditions(
+            state,
+            src,
+            tgt,
+            "conflict-alias",
+            DeleteRoutingStrategy.SHARD_TOPOLOGY
+        );
         assertEquals("Expected 3 errors (src unready, tgt unready, alias conflict)", 3, errors.size());
     }
 
     public void testNoAliasConflictWhenAliasIsNew() {
         IndexMetadata src = buildMeta("src", 2);
         IndexMetadata tgt = buildMeta("tgt", 2);
-        assertTrue(IndexPreconditionsValidator.validatePreconditions(healthyState(src, tgt), src, tgt, "fresh-alias").isEmpty());
+        assertTrue(
+            IndexPreconditionsValidator.validatePreconditions(
+                healthyState(src, tgt),
+                src,
+                tgt,
+                "fresh-alias",
+                DeleteRoutingStrategy.SHARD_TOPOLOGY
+            ).isEmpty()
+        );
     }
 
     // ---- validatePluginConsistency tests ----

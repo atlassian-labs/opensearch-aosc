@@ -1,6 +1,6 @@
 # Routing and Replay
 
-AOSC preserves document IDs and document routing during backfill and replayed index operations. Delete replay is more subtle because OpenSearch operation history does not record the routing key for deletes.
+AOSC preserves document IDs and document routing during backfill and replayed index operations. Delete replay is more subtle because, before OpenSearch 3.9, operation history does not record the routing key for deletes.
 
 This page explains the behavior AOSC relies on when an index uses custom routing or changes shard count.
 
@@ -26,9 +26,11 @@ Replay reads source operation history:
 | Operation | Routing available to AOSC | Target behavior |
 |-----------|---------------------------|-----------------|
 | Index/create | Yes | AOSC indexes the target document with the replayed routing value. |
-| Delete | No | AOSC chooses the safest delete strategy available for the source and target shard topology. |
+| Delete | OpenSearch 3.9 and later: yes. Earlier: no. | On 3.9 and later, AOSC deletes with the recorded routing. Earlier, AOSC chooses the safest delete strategy available for the source and target shard topology. |
 
-`Translog.Index` includes routing. `Translog.Delete` does not. This is an OpenSearch limitation rather than an AOSC-specific encoding choice. The upstream feature request is tracked in [OpenSearch issue 20907](https://github.com/opensearch-project/OpenSearch/issues/20907).
+`Translog.Index` includes routing. Before OpenSearch 3.9, `Translog.Delete` does not. This is an OpenSearch limitation rather than an AOSC-specific encoding choice. The upstream feature request is tracked in [OpenSearch issue 20907](https://github.com/opensearch-project/OpenSearch/issues/20907).
+
+When every node runs OpenSearch 3.9 or later at `_start`, AOSC replays each delete with its recorded routing in every routing mode, and `accept_data_loss_if_custom_routing_is_used` isn't needed. The delete-replay sections below describe OpenSearch 3.8 or earlier, or a cluster that still has older nodes when the migration starts.
 
 ## Why Delete Replay Needs a Topology
 
@@ -45,14 +47,15 @@ AOSC detects a routing mode at migration start from the source and target index 
 | Source to target shards | Mode | Delete replay behavior | Custom-routed deletes |
 |-------------------------|------|------------------------|-----------------------|
 | `N -> N` | `SAME_SHARD` | Deletes are sent to the corresponding target shard using a synthetic routing value for that shard. | Safe. |
-| `N -> kN`, where `k` is a power of 2 and routing metadata is compatible | `SPLIT_SHARD` | Deletes fan out to the `k` target shards that can contain documents from the source shard. | Safe. Extra fan-out deletes are no-ops. |
-| Shrink, non-multiple change, or non-power-of-2 expansion | `BULK_API` | Deletes are sent without routing and are routed by `_id`. | Risky for custom-routed documents. Requires explicit consent. |
+| `N -> kN`, where `k` is a power of 2 | `SPLIT_SHARD` | Deletes fan out to the `k` target shards that can contain documents from the source shard. | Safe. Extra fan-out deletes are no-ops. |
+| `kN -> N`, where `k` is a power of 2 | `SHRINK_SHARD` | Deletes are sent to the one target shard that holds every document from the source shard. | Safe. |
+| Non-multiple change, or non-power-of-2 expansion or shrink | `BULK_API` | Deletes are sent without routing and are routed by `_id`. | Risky for custom-routed documents. Requires explicit consent. |
 
 The `SPLIT_SHARD` case is restricted to power-of-2 expansion factors because that is the topology where OpenSearch's routing math keeps a bounded, non-overlapping target shard set for each source shard. A non-power-of-2 expansion can scatter documents from one source shard across target shards that overlap with other source shards.
 
-For source indices with more than one primary shard, `SPLIT_SHARD` also requires the source and target to have the same `index.number_of_routing_shards`. AOSC validates this at `_start` time. If the values differ, recreate the target index with the source index's `index.number_of_routing_shards` before starting the migration. The single-source-shard case is different: a delete from shard `0` fans out to every target shard, so matching routing-shard space is not required.
+`SAME_SHARD`, `SPLIT_SHARD`, and `SHRINK_SHARD` also require the source and target to have the same `index.number_of_routing_shards` when both have more than one primary shard. AOSC validates this at `_start` time on OpenSearch 3.8 or earlier. If the values differ, recreate the target index with the source index's `index.number_of_routing_shards` before starting the migration. With one shard on either side, every delete reaches every candidate shard, so matching routing-shard space is not required.
 
-Current implementation detail: AOSC computes synthetic routing values for the target index. In `SAME_SHARD`, a delete from source shard `S` is sent with a synthetic routing value that routes to target shard `S`. In `SPLIT_SHARD`, the delete is sent once to each target shard in the source shard's target group. Extra fan-out deletes are expected no-ops.
+Current implementation detail: AOSC computes synthetic routing values for the target index. In `SAME_SHARD`, a delete from source shard `S` is sent with a synthetic routing value that routes to target shard `S`. In `SPLIT_SHARD`, the delete is sent once to each target shard in the source shard's target group. Extra fan-out deletes are expected no-ops. In `SHRINK_SHARD` with factor `k`, a delete from source shard `S` is sent to target shard `S / k`.
 
 ## Deep Dive: Why Power-of-2 Split Fan-Out Is Safe
 
@@ -163,9 +166,10 @@ Some applications intentionally write the same `_id` to multiple routing keys so
 |----------|----------|
 | `SAME_SHARD` | Each source shard copy maps to the same target shard number. |
 | `SPLIT_SHARD` | Each source shard copy maps into that source shard's target shard group. Delete fan-out covers the group. |
+| `SHRINK_SHARD` | Copies from the `k` source shards merged into one target shard can collide during backfill. A delete reaches the right target shard but can remove the surviving copy. |
 | `BULK_API` | Copies can collide on fewer target shards, and unrouted deletes can miss stale copies. |
 
-If your application depends on this pattern, avoid `BULK_API` migrations unless you have an application-specific repair or re-replication plan.
+If your application depends on this pattern, avoid `SHRINK_SHARD` and `BULK_API` migrations unless you have an application-specific repair or re-replication plan.
 
 `SPLIT_SHARD` preserves source-shard ownership, but it does not invent new application-level replicas. For example, if each source shard has one routed copy of a container document and you migrate from `N` to `2N` shards, AOSC preserves the `N` source copies in the correct target shard groups. It does not create `2N` routed copies. Applications that require one copy per target shard need their own re-replication or repair step after cutover.
 
@@ -173,7 +177,7 @@ Shard-count changes that fall back to `BULK_API` are especially risky for contai
 
 ## Consent Gate
 
-AOSC currently requires `options.accept_data_loss_if_custom_routing_is_used=true` for every `BULK_API` topology. The gate is intentionally conservative: it is based on the source and target shard relationship, not a proof that every source document uses custom routing.
+On OpenSearch 3.8 or earlier, AOSC requires `options.accept_data_loss_if_custom_routing_is_used=true` for every `BULK_API` topology. On 3.9 and later, replayed deletes keep their routing, so AOSC doesn't require the option. The gate is intentionally conservative: it is based on the source and target shard relationship, not a proof that every source document uses custom routing.
 
 Use that option only after you have checked the source write path and accepted the possibility of stale custom-routed documents in the target.
 
@@ -183,7 +187,7 @@ Use this decision path before changing shard count:
 
 | Source index behavior | Recommended target shard count |
 |-----------------------|--------------------------------|
-| Default routing only | Any target shard count that meets your operational needs; `BULK_API` still requires explicit consent for unsupported topologies. |
-| Client-supplied `_routing` | Prefer `N -> N` or `N -> kN` where `k` is a power of 2. |
+| Default routing only | Any target shard count that meets your operational needs; on OpenSearch 3.8 or earlier, `BULK_API` still requires explicit consent for unsupported topologies. |
+| Client-supplied `_routing` | Prefer `N -> N`, `N -> kN`, or `kN -> N` where `k` is a power of 2. |
 | Container replication or same `_id` deliberately written with multiple routing keys | Prefer `N -> N`; use `SPLIT_SHARD` only with a post-cutover plan for any application-level re-replication requirement. |
 | Unknown routing behavior | Treat it as custom routing until the write path and mappings prove otherwise. |

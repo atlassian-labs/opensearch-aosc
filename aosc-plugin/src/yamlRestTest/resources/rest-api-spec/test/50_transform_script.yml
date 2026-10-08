@@ -55,6 +55,9 @@
 
 ---
 "Test start rejects inline transform_script that references missing param":
+  - skip:
+      version: " - 3.4.99"
+      reason: "the INTEG_TEST distribution ships lang-painless only from OpenSearch 3.5"
   - do:
       indices.create:
         index: yaml-tsdr-source
@@ -79,11 +82,11 @@
           alias: yaml-tsdr-alias
           transform_script:
             type: inline
-            # The test cluster has the Painless engine, so this script compiles.
             # Painless returns null for an absent param key (it does not throw), so we
             # dereference it (.length()) to force a NullPointerException during the
             # start-time dry-run — which AOSC surfaces as a 400.
             source: "ctx._source.tag = params.missing_param.length()"
+  - match: { error.reason: "/dry-run/" }
 
 # Positive cases covered by TransformScriptIT.
 

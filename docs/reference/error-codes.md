@@ -14,10 +14,11 @@ AOSC does not define a separate stable error-code namespace. Errors are surfaced
 | `transform_script.source is required for inline scripts` | Inline transform has no source. | Provide Painless source or omit `transform_script`. |
 | `transform_script.id is required for stored scripts` | Stored transform has no ID. | Provide a stored script ID. |
 | `Unknown transform script_context` | Unsupported transform context. | Use `update` or omit `script_context`. |
-| `Transform script dry-run failed` | Script failed validation against an empty context or missing params. | Add params or make the script defensive. |
+| `Transform script dry-run failed` | Script failed validation against a sample document or missing params. With `apply_to_deletes`, it can also fail on a sample delete, which has no `ctx._source`. | Add params or make the script defensive. With `apply_to_deletes`, guard source logic with `ctx.op_type == "index"`. |
 | `validation_query failed on index` | The validation query failed against source or target. | Fix the query or mappings. |
 | `transient_target_settings keys must start with 'index.'` | Option contains invalid target setting key. | Use OpenSearch index setting keys. |
-| `Custom routing detected` or data-loss consent text | AOSC selected `BULK_API` routing mode. Custom-routed deletes cannot be guaranteed because OpenSearch delete history does not carry routing. | Prefer same-shard or power-of-2 expansion, or set consent only after review. |
+| `have different [index.number_of_routing_shards]` | On OpenSearch 3.8 or earlier, a same-shard, split, or shrink migration needs both indices to hash routing the same way. | Recreate the target with the source's `index.number_of_routing_shards`, or run the migration with every node on OpenSearch 3.9 or later. |
+| `Custom routing detected` or data-loss consent text | On OpenSearch 3.8 or earlier, AOSC selected `BULK_API` routing mode. Custom-routed deletes cannot be guaranteed because delete history before 3.9 does not carry routing. | Prefer a same-shard migration or a power-of-2 expansion or shrink, run the migration with every node on OpenSearch 3.9 or later, or set consent only after review. |
 
 ## Runtime Failures
 

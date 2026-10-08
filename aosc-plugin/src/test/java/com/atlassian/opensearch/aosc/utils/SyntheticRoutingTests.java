@@ -95,6 +95,13 @@ public class SyntheticRoutingTests extends OpenSearchTestCase {
         assertEquals(ShardRoutingMode.SAME_SHARD, SyntheticRoutingHelper.detectRoutingMode(src, tgt));
     }
 
+    public void testDetectModeIgnoresRoutingShards() {
+        // A routing-shards mismatch is rejected at _start before 3.9, not downgraded to BULK_API.
+        IndexMetadata src = IndexMetadata.builder(buildIndexMetadata("src", 2)).setRoutingNumShards(2).build();
+        IndexMetadata tgt = IndexMetadata.builder(buildIndexMetadata("tgt", 2)).setRoutingNumShards(1024).build();
+        assertEquals(ShardRoutingMode.SAME_SHARD, SyntheticRoutingHelper.detectRoutingMode(src, tgt));
+    }
+
     public void testDetectSplitShardPowerOfTwo() {
         IndexMetadata src = buildIndexMetadata("src", 2);
         IndexMetadata tgt = buildIndexMetadata("tgt", 4);
@@ -121,11 +128,23 @@ public class SyntheticRoutingTests extends OpenSearchTestCase {
         assertEquals(ShardRoutingMode.BULK_API, SyntheticRoutingHelper.detectRoutingMode(src, tgt));
     }
 
-    public void testDetectBulkApiShrink() {
-        // 4→2: shrinking — not supported via SPLIT_SHARD, falls to BULK_API
-        IndexMetadata src = buildIndexMetadata("src", 4);
-        IndexMetadata tgt = buildIndexMetadata("tgt", 2);
-        assertEquals(ShardRoutingMode.BULK_API, SyntheticRoutingHelper.detectRoutingMode(src, tgt));
+    public void testDetectShrinkShardPowerOfTwo() {
+        assertEquals(
+            ShardRoutingMode.SHRINK_SHARD,
+            SyntheticRoutingHelper.detectRoutingMode(buildIndexMetadata("src", 4), buildIndexMetadata("tgt", 2))
+        );
+        assertEquals(
+            ShardRoutingMode.SHRINK_SHARD,
+            SyntheticRoutingHelper.detectRoutingMode(buildIndexMetadata("src", 8), buildIndexMetadata("tgt", 1))
+        );
+    }
+
+    public void testDetectBulkApiNonPowerOfTwoShrink() {
+        // 6→2: factor 3
+        assertEquals(
+            ShardRoutingMode.BULK_API,
+            SyntheticRoutingHelper.detectRoutingMode(buildIndexMetadata("src", 6), buildIndexMetadata("tgt", 2))
+        );
     }
 
     // ---- High shard count coverage (B034) ----

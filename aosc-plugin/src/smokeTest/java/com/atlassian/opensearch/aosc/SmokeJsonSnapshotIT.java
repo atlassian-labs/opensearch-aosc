@@ -31,6 +31,7 @@ public class SmokeJsonSnapshotIT extends AoscSmokeTestBase {
         "phase",
         "options",
         "shard_routing_mode",
+        "delete_routing_strategy",
         "start_time_millis",
         "last_updated_millis",
         "shards",
@@ -132,6 +133,7 @@ public class SmokeJsonSnapshotIT extends AoscSmokeTestBase {
         assertIsString(status, "alias");
         assertIsString(status, "phase");
         assertIsString(status, "shard_routing_mode");
+        assertIsString(status, "delete_routing_strategy");
         assertIsNumber(status, "start_time_millis");
         assertIsNumber(status, "last_updated_millis");
         assertIsMap(status, "options");

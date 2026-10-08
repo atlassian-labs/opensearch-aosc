@@ -125,6 +125,7 @@ validateNebulaPom.enabled = false
 ext {
     resolvedJacksonDatabindVersion = lineProps.getProperty("jackson_databind.${osMinor}")
     resolvedJacksonAnnotationsVersion = lineProps.getProperty("jackson_annotations.${osMinor}")
+    resolvedJacksonCoreVersion = lineProps.getProperty("jackson_core.${osMinor}")
 }
 if (resolvedJacksonDatabindVersion == null || resolvedJacksonAnnotationsVersion == null) throw new GradleException(
     "No jackson version for OpenSearch ${opensearch_version} (minor ${osMinor}) in release/os${osMajor}.properties. " +
@@ -150,7 +151,7 @@ repositories {
 // target OpenSearch version (B041), we keep sha1 files for every supported
 // version in licenses/ and hide the non-matching ones before the check runs.
 // ---------------------------------------------------------------------------
-task hideNonMatchingJacksonShas {
+task hideNonMatchingJacksonLicenses {
     doLast {
         def stash = file("${buildDir}/jackson-sha-stash")
         stash.mkdirs()
@@ -158,13 +159,22 @@ task hideNonMatchingJacksonShas {
             include 'jackson-*-*.jar.sha1'
             exclude "jackson-databind-${resolvedJacksonDatabindVersion}.jar.sha1"
             exclude "jackson-annotations-${resolvedJacksonAnnotationsVersion}.jar.sha1"
+            if (resolvedJacksonCoreVersion != null) {
+                exclude "jackson-core-${resolvedJacksonCoreVersion}.jar.sha1"
+            }
         }.each { f ->
             java.nio.file.Files.move(f.toPath(), stash.toPath().resolve(f.name))
+        }
+        if (resolvedJacksonCoreVersion == null) {
+            ['jackson-core-LICENSE.txt', 'jackson-core-NOTICE.txt'].each { name ->
+                def source = file("licenses/${name}")
+                java.nio.file.Files.move(source.toPath(), stash.toPath().resolve(name))
+            }
         }
     }
 }
 
-task restoreJacksonShas {
+task restoreJacksonLicenses {
     doLast {
         def stash = file("${buildDir}/jackson-sha-stash")
         if (stash.exists()) {
@@ -178,8 +188,8 @@ task restoreJacksonShas {
 }
 
 tasks.named('dependencyLicenses').configure {
-    dependsOn hideNonMatchingJacksonShas
-    finalizedBy restoreJacksonShas
+    dependsOn hideNonMatchingJacksonLicenses
+    finalizedBy restoreJacksonLicenses
 }
 
 // ---------------------------------------------------------------------------
@@ -187,9 +197,13 @@ tasks.named('dependencyLicenses').configure {
 // transitive error_prone_annotations conflict under failOnVersionConflict().
 // The pinned version (if any) for this exact OpenSearch version comes from the manifest.
 def errorProneOverride = lineProps.getProperty("error_prone.${opensearch_version}")
+def jspecifyOverride = lineProps.getProperty("jspecify.${opensearch_version}")
 configurations.matching { it.name.startsWith('yamlRestTest') }.configureEach {
     if (errorProneOverride) {
         resolutionStrategy.force "com.google.errorprone:error_prone_annotations:${errorProneOverride}"
+    }
+    if (jspecifyOverride) {
+        resolutionStrategy.force "org.jspecify:jspecify:${jspecifyOverride}"
     }
 }
 
@@ -212,9 +226,29 @@ sourceSets.all { ss ->
     }
 }
 
+// ---------------------------------------------------------------------------
+// OpenSearch 3.9+ overlay: src/<set>/java-39plus files replace the same relative
+// path in the base dirs; overlay-only files are added. The exclude is keyed on
+// location because a plain pattern would also drop the overlay copy.
+// ---------------------------------------------------------------------------
+def osVersionParts = (gradle.ext.aoscOsVersion as String).tokenize('.')*.toInteger()
+def hasOpenSearch39 = osVersionParts[0] > 3 || (osVersionParts[0] == 3 && osVersionParts[1] >= 9)
+sourceSets.configureEach { ss ->
+    def overlayDir = file("src/${ss.name}/java-39plus")
+    if (hasOpenSearch39 && overlayDir.isDirectory()) {
+        ss.java.srcDir overlayDir
+        def overlayPath = overlayDir.toPath()
+        def replaced = fileTree(overlayDir).files.collect { overlayPath.relativize(it.toPath()).toString().replace(File.separator, '/') } as Set
+        ss.java.exclude { element -> !element.file.toPath().startsWith(overlayPath) && replaced.contains(element.relativePath.pathString) }
+    }
+}
+
 spotless {
     java {
-        target 'src/*/java/**/*.java', "src/*/java-2x/**/*.java", "src/*/java-3x/**/*.java"
+        target 'src/*/java/**/*.java',
+            'src/*/java-2x/**/*.java',
+            'src/*/java-3x/**/*.java',
+            'src/*/java-39plus/**/*.java'
 
         licenseHeader '''/*
  * SPDX-License-Identifier: Apache-2.0
@@ -653,8 +687,14 @@ dependencies {
     // Jackson — versions auto-resolved to match OpenSearch's shipped Jackson (B041).
     implementation "com.fasterxml.jackson.core:jackson-databind:${resolvedJacksonDatabindVersion}"
     implementation "com.fasterxml.jackson.core:jackson-annotations:${resolvedJacksonAnnotationsVersion}"
+    if (resolvedJacksonCoreVersion != null) {
+        implementation "com.fasterxml.jackson.core:jackson-core:${resolvedJacksonCoreVersion}"
+    }
     testImplementation "com.fasterxml.jackson.core:jackson-databind:${resolvedJacksonDatabindVersion}"
     testImplementation "com.fasterxml.jackson.core:jackson-annotations:${resolvedJacksonAnnotationsVersion}"
+    if (resolvedJacksonCoreVersion != null) {
+        testImplementation "com.fasterxml.jackson.core:jackson-core:${resolvedJacksonCoreVersion}"
+    }
 
     // Lombok — compile-time only, not bundled in plugin zip
     compileOnly 'org.projectlombok:lombok:1.18.30'

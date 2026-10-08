@@ -94,6 +94,31 @@ public class MigrationRequestTests extends OpenSearchTestCase {
         assertNotNull(rt.getOptions());
     }
 
+    public void testApplyToDeletesParsesAndDefaultsToFalse() throws IOException {
+        String json = "{\"target_index\":\"tgt\",\"transform_script\":"
+            + "{\"type\":\"inline\",\"source\":\"ctx._id = 't-' + ctx._id\",\"apply_to_deletes\":true}}";
+        XContentParser parser = JsonXContent.jsonXContent.createParser(
+            xContentRegistry(),
+            DeprecationHandler.THROW_UNSUPPORTED_OPERATION,
+            json
+        );
+        MigrationRequest parsed = MigrationRequest.fromXContent(parser);
+        assertTrue(parsed.getTransformScript().isDeleteAware());
+
+        MigrationRequest legacy = new MigrationRequest().setTargetIndex("tgt")
+            .setTransformScript(new InlineTransformScript("ctx._source.x = 1", null));
+        XContentBuilder builder = XContentFactory.jsonBuilder();
+        legacy.toXContent(builder, ToXContent.EMPTY_PARAMS);
+        assertTrue("absent flag is written as false", builder.toString().contains("\"apply_to_deletes\":false"));
+        assertFalse(legacy.getTransformScript().isDeleteAware());
+    }
+
+    public void testApplyToDeletesWithoutScriptBodyIsNotDeleteAware() {
+        InlineTransformScript identity = new InlineTransformScript("identity", null);
+        identity.setApplyToDeletes(true);
+        assertFalse(identity.isDeleteAware());
+    }
+
     // ---- Validation: missing target ----
     public void testValidation() {
         MigrationRequest request = new MigrationRequest();

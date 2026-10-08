@@ -16,7 +16,7 @@ cd opensearch-aosc
 ./gradlew assemble -PopensearchVersion=3.6.0
 ```
 
-Most supported versions build on the bundled Gradle wrapper. A few of the newest OpenSearch versions require a newer Gradle (e.g. OpenSearch 3.7 needs Gradle 9.4.1) — before building one of those, run `./scripts/set-gradle.sh <version>` to point the wrapper at the right Gradle (`--reset` restores the default). See [Development Environment](../contributing/dev-environment.md#gradle-version-per-opensearch-version).
+Most supported versions build on the bundled Gradle wrapper. A few of the newest OpenSearch versions require a newer Gradle (OpenSearch 3.7–3.8 need Gradle 9.4.1, and 3.9 needs Gradle 9.7.1) — before building one of those, run `./scripts/set-gradle.sh <version>` to point the wrapper at the right Gradle (`--reset` restores the default). See [Development Environment](../contributing/dev-environment.md#gradle-version-per-opensearch-version).
 
 The build prints the ZIP path when it finishes:
 

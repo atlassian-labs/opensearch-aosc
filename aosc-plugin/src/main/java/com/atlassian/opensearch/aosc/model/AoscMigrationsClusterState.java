@@ -192,6 +192,8 @@ public class AoscMigrationsClusterState extends AbstractNamedDiffable<ClusterSta
         CoordinatorPhase phase;
         @JsonProperty("routing_mode")
         ShardRoutingMode routingMode;
+        @JsonProperty("delete_routing_strategy")
+        DeleteRoutingStrategy deleteRoutingStrategy;
         @JsonProperty("start_time_millis")
         long startTimeMillis;
         @JsonProperty("shards")
@@ -214,6 +216,9 @@ public class AoscMigrationsClusterState extends AbstractNamedDiffable<ClusterSta
             this.options = obj.options;
             this.phase = obj.phase;
             this.routingMode = obj.routingMode;
+            this.deleteRoutingStrategy = obj.deleteRoutingStrategy != null
+                ? obj.deleteRoutingStrategy
+                : DeleteRoutingStrategy.SHARD_TOPOLOGY;
             this.startTimeMillis = obj.startTimeMillis;
             this.shards = obj.shards;
             this.failure = obj.failure;

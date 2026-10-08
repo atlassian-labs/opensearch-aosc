@@ -23,6 +23,7 @@ import com.atlassian.opensearch.aosc.model.ShardProgressDocument;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
+import com.atlassian.opensearch.aosc.service.worker.routing.DeleteOperationRouter;
 import com.atlassian.opensearch.aosc.utils.AoscLogger;
 import com.atlassian.opensearch.aosc.utils.AsyncClientHelper;
 import com.atlassian.opensearch.aosc.utils.LC;
@@ -211,6 +212,7 @@ public class AoscCoordinatorService implements ClusterStateApplier, Closeable {
                     .options(resolvedOptions)
                     .phase(CoordinatorPhase.INITIALIZING)
                     .routingMode(routingMode)
+                    .deleteRoutingStrategy(DeleteOperationRouter.chooseStrategy(currentState))
                     .startTimeMillis(System.currentTimeMillis())
                     .shards(shards)
                     .build();

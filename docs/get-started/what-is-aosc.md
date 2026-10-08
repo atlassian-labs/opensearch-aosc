@@ -57,7 +57,7 @@ Applications should talk to the alias, not directly to the concrete source index
 - AOSC is not zero-interruption. Source writes are blocked briefly during cutover. Successful production cutovers have been observed where the application-visible write interruption was about 2 seconds to 30 seconds, including a 50 TB index at about 30 seconds. This is an observation, not an upper bound; validation, alias update, cluster-manager responsiveness, shard count, and write load can make specific runs shorter or longer.
 - AOSC does not delete the source or target index for you after a migration.
 - Cross-cluster migrations are not supported.
-- Custom routing and shard count changes require careful review; some routes require explicit data-loss consent.
+- Custom routing and shard count changes require careful review; on OpenSearch 3.8 or earlier, some routes require explicit data-loss consent.
 - Built-in document transforms use OpenSearch update-script style and are currently 1:1 for each source document.
 
 ::: warning Plan retries before production

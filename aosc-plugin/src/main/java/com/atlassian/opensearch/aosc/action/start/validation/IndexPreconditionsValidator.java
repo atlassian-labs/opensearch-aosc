@@ -7,11 +7,14 @@
  */
 package com.atlassian.opensearch.aosc.action.start.validation;
 
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
+import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.utils.SyntheticRoutingHelper;
 
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.metadata.IndexAbstraction;
 import org.opensearch.cluster.metadata.IndexMetadata;
+import org.opensearch.cluster.metadata.MappingMetadata;
 import org.opensearch.cluster.routing.IndexRoutingTable;
 
 import java.util.ArrayList;
@@ -22,13 +25,25 @@ public final class IndexPreconditionsValidator implements MigrationStartValidato
 
     @Override
     public void validate(ValidationContext ctx) {
-        List<String> errors = validatePreconditions(ctx.clusterState(), ctx.sourceMeta(), ctx.targetMeta(), ctx.request().getAlias());
+        List<String> errors = validatePreconditions(
+            ctx.clusterState(),
+            ctx.sourceMeta(),
+            ctx.targetMeta(),
+            ctx.request().getAlias(),
+            ctx.deleteRoutingStrategy()
+        );
         if (!errors.isEmpty()) {
             throw new IllegalStateException("Migration precondition check failed: " + String.join("; ", errors));
         }
     }
 
-    public static List<String> validatePreconditions(ClusterState state, IndexMetadata sourceMeta, IndexMetadata targetMeta, String alias) {
+    public static List<String> validatePreconditions(
+        ClusterState state,
+        IndexMetadata sourceMeta,
+        IndexMetadata targetMeta,
+        String alias,
+        DeleteRoutingStrategy deleteRoutingStrategy
+    ) {
         List<String> errors = new ArrayList<>();
 
         IndexRoutingTable sourceRouting = state.routingTable().index(sourceMeta.getIndex());
@@ -82,38 +97,72 @@ public final class IndexPreconditionsValidator implements MigrationStartValidato
             errors.add("alias [" + alias + "] conflicts with an existing concrete index of the same name");
         }
 
-        validateSplitShardRoutingPreconditions(sourceMeta, targetMeta, errors);
-
-        try {
-            SyntheticRoutingHelper.computeSyntheticRoutings(targetMeta);
-        } catch (IllegalStateException e) {
-            errors.add("synthetic routing computation failed for target index: " + e.getMessage());
+        if (deleteRoutingStrategy == DeleteRoutingStrategy.SHARD_TOPOLOGY) {
+            validateShardTopologyPreconditions(sourceMeta, targetMeta, errors);
         }
 
         return errors;
     }
 
-    private static void validateSplitShardRoutingPreconditions(IndexMetadata sourceMeta, IndexMetadata targetMeta, List<String> errors) {
+    /** Before 3.9, deletes are routed by shard topology: reject settings where that can't reach the document. */
+    private static void validateShardTopologyPreconditions(IndexMetadata sourceMeta, IndexMetadata targetMeta, List<String> errors) {
+        if (sourceMeta.isRoutingPartitionedIndex() || targetMeta.isRoutingPartitionedIndex()) {
+            addPartitionedError("source", sourceMeta, errors);
+            addPartitionedError("target", targetMeta, errors);
+            return; // the checks below assume routing alone picks the shard
+        }
+        if (SyntheticRoutingHelper.detectRoutingMode(sourceMeta, targetMeta) == ShardRoutingMode.BULK_API) {
+            validateUnroutedDeletes(sourceMeta, targetMeta, errors);
+        } else {
+            validateSyntheticRouting(sourceMeta, targetMeta, errors);
+        }
+    }
+
+    private static void addPartitionedError(String role, IndexMetadata indexMeta, List<String> errors) {
+        if (indexMeta.isRoutingPartitionedIndex()) {
+            errors.add(
+                role
+                    + " index ["
+                    + indexMeta.getIndex().getName()
+                    + "] is routing-partitioned (index.routing_partition_size="
+                    + indexMeta.getRoutingPartitionSize()
+                    + "); before OpenSearch 3.9 replayed deletes can't be routed to its documents. "
+                    + "Run the migration with every node on OpenSearch 3.9 or later"
+            );
+        }
+    }
+
+    /** BULK_API sends deletes without routing, which a routing-required target rejects. */
+    private static void validateUnroutedDeletes(IndexMetadata sourceMeta, IndexMetadata targetMeta, List<String> errors) {
+        MappingMetadata mapping = targetMeta.mapping();
+        if (mapping != null && mapping.routingRequired()) {
+            errors.add(
+                "target index ["
+                    + targetMeta.getIndex().getName()
+                    + "] requires routing (_routing.required=true), but before OpenSearch 3.9 a "
+                    + sourceMeta.getNumberOfShards()
+                    + "->"
+                    + targetMeta.getNumberOfShards()
+                    + " shard migration replays deletes without routing, which this index rejects. "
+                    + "Use a shard count that is the source count multiplied or divided by a power of two, or run on OpenSearch 3.9 or later"
+            );
+        }
+    }
+
+    /** SAME/SPLIT/SHRINK address target shards by synthetic routing, which needs a shared hash space. */
+    private static void validateSyntheticRouting(IndexMetadata sourceMeta, IndexMetadata targetMeta, List<String> errors) {
         int sourceShards = sourceMeta.getNumberOfShards();
         int targetShards = targetMeta.getNumberOfShards();
-        if (sourceShards == 1 || targetShards <= sourceShards || targetShards % sourceShards != 0) {
-            return;
-        }
-
-        int factor = targetShards / sourceShards;
-        if (!isPowerOfTwo(factor)) {
-            return;
-        }
-
         int sourceRoutingShards = sourceMeta.getRoutingNumShards();
         int targetRoutingShards = targetMeta.getRoutingNumShards();
-        if (sourceRoutingShards != targetRoutingShards) {
+        // With one shard on either side, every delete goes to every candidate shard, so the hash space doesn't matter.
+        if (Math.min(sourceShards, targetShards) > 1 && sourceRoutingShards != targetRoutingShards) {
             errors.add(
                 "source index ["
                     + sourceMeta.getIndex().getName()
                     + "] and target index ["
                     + targetMeta.getIndex().getName()
-                    + "] have incompatible [index.number_of_routing_shards] for split-shard replay (source="
+                    + "] have different [index.number_of_routing_shards] (source="
                     + sourceRoutingShards
                     + ", target="
                     + targetRoutingShards
@@ -123,11 +172,13 @@ public final class IndexPreconditionsValidator implements MigrationStartValidato
                     + targetShards
                     + "); recreate the target index with index.number_of_routing_shards="
                     + sourceRoutingShards
+                    + ", or run the migration with every node on OpenSearch 3.9 or later"
             );
         }
-    }
-
-    private static boolean isPowerOfTwo(int value) {
-        return value > 0 && (value & (value - 1)) == 0;
+        try {
+            SyntheticRoutingHelper.computeSyntheticRoutings(targetMeta);
+        } catch (IllegalStateException e) {
+            errors.add("synthetic routing computation failed for target index: " + e.getMessage());
+        }
     }
 }

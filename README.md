@@ -80,7 +80,7 @@ The build requires `-PopensearchVersion`. Set it per invocation, or once in `~/.
 ./gradlew itTest -PopensearchVersion=3.6.0
 ```
 
-Most versions build on the bundled Gradle wrapper; a few newest OpenSearch versions need a newer Gradle (e.g. 3.7 → Gradle 9.4.1) — run `./scripts/set-gradle.sh <version>` first. See [Development Environment](docs/contributing/dev-environment.md#gradle-version-per-opensearch-version).
+Most versions build on the bundled Gradle wrapper; a few newest OpenSearch versions need a newer Gradle (3.7–3.8 → Gradle 9.4.1, 3.9 → Gradle 9.7.1) — run `./scripts/set-gradle.sh <version>` first. See [Development Environment](docs/contributing/dev-environment.md#gradle-version-per-opensearch-version).
 
 Useful tasks (all run with `-PopensearchVersion=<version>`):
 
@@ -113,6 +113,7 @@ opensearch-aosc/
 |   |-- src/main/java/          # Shared source (both 2.x and 3.x)
 |   |-- src/main/java-2x/       # OpenSearch 2.x-specific source
 |   |-- src/main/java-3x/       # OpenSearch 3.x-specific source
+|   |-- src/main/java-39plus/   # OpenSearch 3.9+ overlay (replaces same-path files)
 |   |-- src/test/java/           # Shared tests
 |   |-- src/test/java-2x/        # 2.x-specific tests
 |   |-- src/test/java-3x/        # 3.x-specific tests

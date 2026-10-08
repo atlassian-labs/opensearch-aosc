@@ -76,6 +76,10 @@ public class MigrationRequestOptions implements JacksonWriteable, JacksonToXCont
     @JsonProperty("validation_query")
     private Map<String, Object> validationQuery;
 
+    /**
+     * Required on OpenSearch 3.8 or earlier when the target shard count isn't the source count multiplied
+     * or divided by a power of two: custom-routed deletes may leave stale target documents. Ignored on 3.9+.
+     */
     @JsonProperty("accept_data_loss_if_custom_routing_is_used")
     private Boolean acceptDataLossIfCustomRoutingIsUsed;
 

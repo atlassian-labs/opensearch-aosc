@@ -1,6 +1,6 @@
 # Code Layout
 
-AOSC source lives in a single `aosc-plugin/` module. Shared code is at `src/main/java/com/atlassian/opensearch/aosc/`; files that differ between OpenSearch 2.x and 3.x live in `src/main/java-2x/` and `src/main/java-3x/`. Gradle selects the matching compat directory based on `-PopensearchVersion`. The same pattern applies to test source sets (`src/{test,itTest,smokeTest,scaleTest,benchmarkTest,yamlRestTest}/`). See [Running Tests](running-tests.md) for the test tiers and `opensearch-docker/` for the local cluster.
+AOSC source lives in a single `aosc-plugin/` module. Shared code is at `src/main/java/com/atlassian/opensearch/aosc/`; files that differ between OpenSearch 2.x and 3.x live in `src/main/java-2x/` and `src/main/java-3x/`. Gradle selects the matching compat directory based on `-PopensearchVersion`, and on OpenSearch 3.9+ also compiles the `java-39plus/` overlay. The same pattern applies to test source sets (`src/{test,itTest,smokeTest,scaleTest,benchmarkTest,yamlRestTest}/`). See [Running Tests](running-tests.md) for the test tiers and `opensearch-docker/` for the local cluster.
 
 ## Version Compatibility
 
@@ -10,6 +10,7 @@ Most code lives in shared source directories (`src/*/java/`) and compiles agains
 
 - **Shared** (`java/`): Default location. Use when the code compiles identically against both versions.
 - **Compat** (`java-2x/` + `java-3x/`): Use when the file must import a type that moved between versions (e.g., `org.opensearch.client.Client` → `org.opensearch.transport.client.Client`), or when an API signature changed (e.g., `TotalHits.value` field → method).
+- **3.9+ overlay** (`java-39plus/`): Use only when a class needs a different implementation on OpenSearch 3.9+ (today: `Translog.Delete.routing()`). Keep the default implementation in the normal location. On 3.9+ builds Gradle compiles the overlay and excludes the base file with the same relative path; overlay-only files, such as 3.9-only tests, are added.
 
 **Compat utilities** abstract the real API differences so most code stays shared:
 
@@ -20,8 +21,9 @@ Most code lives in shared source directories (`src/*/java/`) and compiles agains
 | `OsTestCompat` | `test/java-{2,3}x` | `ShardStats` constructor (6 vs 7 params) |
 | `MockClientFactory` | `test/java-{2,3}x` | Mock `Client`/`AdminClient` creation, `AcknowledgedResponse` |
 | `HttpCompat` | `smokeTest,benchmarkTest/java-{2,3}x` | Apache HttpClient 4 vs 5 packages |
+| `TranslogDeleteOp` | `main/java` (default) + `main/java-39plus` (overlay) | Wraps `Translog.Delete`; its routing is available on OpenSearch 3.9+ |
 
-**Drift guard:** CI runs `scripts/check-compat-drift.sh` to verify that non-excepted compat file pairs differ only in import/package lines. If you add a real code difference to a compat file, add it to the exceptions list in that script.
+**Drift guard:** CI runs `scripts/check-compat-drift.sh` to verify that non-excepted compat file pairs differ only in import/package lines. If you add a real code difference to a compat file, add it to the exceptions list in that script. The 3.9+ overlay intentionally differs from the file it replaces and is not a drift pair.
 
 ## Main Packages
 

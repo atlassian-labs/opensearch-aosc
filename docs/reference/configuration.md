@@ -103,7 +103,7 @@ Pass these in the start request under `options`:
 | `max_convergence_rounds_per_shard` | cluster default | `1` to `100000` |
 | `doc_count_tolerance` | `0` | `>=0` |
 | `validation_query` | unset | Valid query DSL on both source and target |
-| `accept_data_loss_if_custom_routing_is_used` | `false` | boolean |
+| `accept_data_loss_if_custom_routing_is_used` | `false` | boolean; not needed on OpenSearch 3.9 and later |
 | `transient_target_settings` | cluster default | keys must start with `index.` |
 | `target_ready_timeout_seconds` | cluster default | positive enough to satisfy cluster setting range |
 | `remove_source_write_block_on_success` | cluster default, currently `false` | boolean |

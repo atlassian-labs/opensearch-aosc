@@ -30,9 +30,9 @@ public final class SyntheticRoutingHelper {
      *
      * <ul>
      *   <li>SAME_SHARD: same number of shards</li>
-     *   <li>SPLIT_SHARD: target has more shards and the factor is a power of 2
-     *       (OpenSearch's split constraint)</li>
-     *   <li>BULK_API: all other cases (different shard counts, non-power-of-2 factor)</li>
+     *   <li>SPLIT_SHARD: target has more shards and the factor is a power of 2</li>
+     *   <li>SHRINK_SHARD: target has fewer shards and the factor is a power of 2</li>
+     *   <li>BULK_API: all other cases</li>
      * </ul>
      */
     public static ShardRoutingMode detectRoutingMode(IndexMetadata sourceMetadata, IndexMetadata targetMetadata) {
@@ -42,16 +42,18 @@ public final class SyntheticRoutingHelper {
         if (sourceShards == targetShards) {
             return ShardRoutingMode.SAME_SHARD;
         }
-
-        if (targetShards > sourceShards && targetShards % sourceShards == 0) {
-            int factor = targetShards / sourceShards;
-            // OpenSearch requires split factor to be a power of 2
-            if ((factor & (factor - 1)) == 0) {
-                return ShardRoutingMode.SPLIT_SHARD;
-            }
+        if (isPowerOfTwoMultiple(targetShards, sourceShards)) {
+            return ShardRoutingMode.SPLIT_SHARD;
         }
-
+        if (isPowerOfTwoMultiple(sourceShards, targetShards)) {
+            return ShardRoutingMode.SHRINK_SHARD;
+        }
         return ShardRoutingMode.BULK_API;
+    }
+
+    private static boolean isPowerOfTwoMultiple(int larger, int smaller) {
+        int factor = larger / smaller;
+        return larger > smaller && larger % smaller == 0 && (factor & (factor - 1)) == 0;
     }
 
     private static final int MAX_ROUNDS = 10;

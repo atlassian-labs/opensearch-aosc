@@ -13,6 +13,7 @@ import com.atlassian.opensearch.aosc.model.AoscMigrationsClusterState.ShardMigra
 import com.atlassian.opensearch.aosc.model.phase.CoordinatorPhase;
 import com.atlassian.opensearch.aosc.model.phase.ShardPhase;
 import com.atlassian.opensearch.aosc.model.transform.InlineTransformScript;
+import com.atlassian.opensearch.aosc.utils.jackson.JacksonHelper;
 
 import org.opensearch.cluster.ClusterState;
 import org.opensearch.cluster.Diff;
@@ -67,6 +68,7 @@ public class AoscMigrationsClusterStateTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(CoordinatorPhase.ACTIVE)
             .routingMode(ShardRoutingMode.SAME_SHARD)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.TRANSLOG_ROUTING)
             .startTimeMillis(System.currentTimeMillis())
             .shards(Map.of(0, sampleShard(ShardPhase.BACKFILLING), 1, sampleShard(ShardPhase.PENDING)))
             .failure(null)
@@ -109,6 +111,7 @@ public class AoscMigrationsClusterStateTests extends OpenSearchTestCase {
         assertEquals(entry.alias(), rt.alias());
         assertEquals(entry.phase(), rt.phase());
         assertEquals(entry.routingMode(), rt.routingMode());
+        assertEquals(DeleteRoutingStrategy.TRANSLOG_ROUTING, rt.deleteRoutingStrategy());
         assertEquals(entry.startTimeMillis(), rt.startTimeMillis());
         assertEquals(entry.shards().size(), rt.shards().size());
         assertNull(rt.failure());
@@ -228,14 +231,18 @@ public class AoscMigrationsClusterStateTests extends OpenSearchTestCase {
             .options(AoscTestUtil.defaultMigrationOptions())
             .phase(CoordinatorPhase.INITIALIZING)
             .routingMode(ShardRoutingMode.BULK_API)
+            .deleteRoutingStrategy(DeleteRoutingStrategy.TRANSLOG_ROUTING)
             .startTimeMillis(99999L)
             .shards(Map.of(0, sampleShard(ShardPhase.PENDING)))
             .failure("some-failure")
             .build();
+        entry.transformScript().setApplyToDeletes(true);
 
         BytesStreamOutput out = new BytesStreamOutput();
         entry.writeTo(out);
         Entry rt = new Entry(out.bytes().streamInput());
+
+        assertTrue("apply_to_deletes survives serialization", rt.transformScript().isDeleteAware());
 
         assertEquals(entry.migrationId(), rt.migrationId());
         assertEquals(entry.sourceIndex(), rt.sourceIndex());
@@ -243,6 +250,7 @@ public class AoscMigrationsClusterStateTests extends OpenSearchTestCase {
         assertEquals(entry.alias(), rt.alias());
         assertEquals(entry.phase(), rt.phase());
         assertEquals(entry.routingMode(), rt.routingMode());
+        assertEquals(DeleteRoutingStrategy.TRANSLOG_ROUTING, rt.deleteRoutingStrategy());
         assertEquals(entry.startTimeMillis(), rt.startTimeMillis());
         assertEquals(entry.shards().size(), rt.shards().size());
         assertEquals("some-failure", rt.failure());
@@ -274,6 +282,17 @@ public class AoscMigrationsClusterStateTests extends OpenSearchTestCase {
         assertEquals(entry.meta(), rt.meta());
         assertTrue(rt.meta().getBoolean(MigrationMetadata.WRITE_BLOCK_APPLIED));
         assertTrue(rt.meta().getBoolean(MigrationMetadata.REBALANCE_DISABLED));
+    }
+
+    public void testLegacyEntryPayloadDefaultsDeleteRoutingStrategy() throws IOException {
+        String json = "{\"migration_id\":\"legacy\",\"source_index\":\"src\",\"target_index\":\"tgt\","
+            + "\"phase\":\"INITIALIZING\",\"routing_mode\":\"BULK_API\",\"start_time_millis\":1,\"shards\":{}}";
+        BytesStreamOutput out = new BytesStreamOutput();
+        out.writeByteArray(JacksonHelper.writeAsBytes(JacksonHelper.readValue(json, Map.class)));
+
+        Entry entry = new Entry(out.bytes().streamInput());
+
+        assertEquals(DeleteRoutingStrategy.SHARD_TOPOLOGY, entry.deleteRoutingStrategy());
     }
 
     // ---- ShardMigrationClusterState Writeable round-trip ----

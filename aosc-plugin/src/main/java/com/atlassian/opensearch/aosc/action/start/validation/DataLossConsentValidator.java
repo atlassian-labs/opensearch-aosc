@@ -7,6 +7,7 @@
  */
 package com.atlassian.opensearch.aosc.action.start.validation;
 
+import com.atlassian.opensearch.aosc.model.DeleteRoutingStrategy;
 import com.atlassian.opensearch.aosc.model.MigrationRequestOptions;
 import com.atlassian.opensearch.aosc.model.ShardRoutingMode;
 import com.atlassian.opensearch.aosc.utils.SyntheticRoutingHelper;
@@ -15,11 +16,14 @@ import org.opensearch.cluster.metadata.IndexMetadata;
 
 import java.util.Objects;
 
-/** Rejects if BULK_API routing mode without explicit data-loss consent. */
+/** Requires data-loss consent for BULK_API migrations before OpenSearch 3.9. */
 public final class DataLossConsentValidator implements MigrationStartValidator {
 
     @Override
     public void validate(ValidationContext ctx) {
+        if (ctx.deleteRoutingStrategy() == DeleteRoutingStrategy.TRANSLOG_ROUTING) {
+            return;
+        }
         IllegalArgumentException rejection = checkDataLossConsent(ctx.sourceMeta(), ctx.targetMeta(), ctx.request().getOptions());
         if (rejection != null) {
             throw rejection;

@@ -10,15 +10,17 @@ Shard count changes are safest when AOSC can keep source-shard ownership unambig
 |-------------------------|------|----------|
 | `N -> N` | `SAME_SHARD` | Safest path for custom-routed indices. |
 | `N -> kN`, where `k` is a power of 2 | `SPLIT_SHARD` | Supported for custom routing when routing metadata is compatible; delete replay fans out within the target shard group. |
-| Shrink, non-multiple change, or non-power-of-2 expansion | `BULK_API` | Requires `accept_data_loss_if_custom_routing_is_used`; custom-routed deletes can leave stale target documents. |
+| `kN -> N`, where `k` is a power of 2 | `SHRINK_SHARD` | Supported for custom routing; each delete goes to the one target shard that holds the source shard's documents. |
+| Non-multiple change, or non-power-of-2 expansion or shrink | `BULK_API` | On OpenSearch 3.8 or earlier, requires `accept_data_loss_if_custom_routing_is_used`; custom-routed deletes can leave stale target documents. |
+
+On OpenSearch 3.9 and later, operation history records each delete's routing. When every node runs 3.9 or later at `_start`, AOSC replays deletes with that routing in every mode and doesn't require `accept_data_loss_if_custom_routing_is_used`.
 
 Check the source index settings and application write path before proceeding. If the source uses tenant routing, container replication, or any client-supplied `_routing`, read [Routing and Replay](../concepts/routing-and-replay) before choosing the target shard count. That page includes the split fan-out proof and the reason `index.number_of_routing_shards` matters.
 
-For split-style migrations from a source index with more than one primary shard, check the source routing-shard value:
+On OpenSearch 3.8 or earlier, same-shard, split, and shrink migrations need the target to use the source's `index.number_of_routing_shards` when both indices have more than one primary shard. Defaults usually match, but not for indices created by `_shrink`, `_split`, or `_clone`, or with an explicit value. Check the source's effective value:
 
 ```bash
-curl -s 'http://localhost:9200/my-index-v1/_settings' \
-  | jq -r '."my-index-v1".settings.index.number_of_routing_shards'
+curl -s 'http://localhost:9200/_cluster/state/metadata/my-index-v1?filter_path=**.routing_num_shards'
 ```
 
 When creating the target, use that same value for `index.number_of_routing_shards`. This setting is fixed at index creation time.
@@ -66,7 +68,7 @@ curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_start' \
   }'
 ```
 
-If AOSC rejects the migration because of routing risk, review the reason before setting `accept_data_loss_if_custom_routing_is_used`. Do not use that option as a generic bypass.
+On OpenSearch 3.8 or earlier, if AOSC rejects the migration because of routing risk, review the reason before setting `accept_data_loss_if_custom_routing_is_used`. Do not use that option as a generic bypass.
 
 ```bash
 curl -X POST 'http://localhost:9200/_plugins/_aosc/my-index-v1/_start' \

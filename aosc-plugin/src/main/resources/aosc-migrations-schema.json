@@ -13,6 +13,7 @@
       "alias": { "type": "keyword" },
       "phase": { "type": "keyword" },
       "routing_mode": { "type": "keyword" },
+      "delete_routing_strategy": { "type": "keyword" },
       "transform_script": { "type": "object", "enabled": false },
       "options": { "type": "object", "enabled": false },
       "start_time_millis": { "type": "long" },
